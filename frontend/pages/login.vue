@@ -69,7 +69,7 @@ async function submit() {
   error.value = ''
   try {
     const data = await api.post('/auth/admin/login/', form)
-    auth.setAdmin(data.access, data.refresh, data.username)
+    auth.setAdmin(data.access, data.username)
     navigateTo('/admin')
   } catch (e: any) {
     error.value = e?.data?.detail || 'Identifiant ou mot de passe incorrect.'

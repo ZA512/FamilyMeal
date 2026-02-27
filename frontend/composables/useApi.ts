@@ -21,6 +21,12 @@ export function useApi() {
     }
     if (!res.ok) {
       const error = await res.json().catch(() => ({ detail: `Erreur ${res.status}` }))
+      // 403 avec message de token invalide → jeton expiré ou corrompu, forcer re-login
+      if (res.status === 403 && typeof error.detail === 'string' && error.detail.toLowerCase().includes('jeton')) {
+        auth.logout()
+        navigateTo('/login')
+        throw new Error('Session expirée, veuillez vous reconnecter.')
+      }
       throw new Error(error.detail || JSON.stringify(error))
     }
     if (res.status === 204) return undefined as T
