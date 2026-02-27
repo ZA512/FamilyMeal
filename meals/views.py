@@ -593,17 +593,54 @@ def scrape_coursesu(request):
             status=400,
         )
 
-    UA = (
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-    )
-    session = req.Session()
-    session.headers.update({'User-Agent': UA, 'Accept-Language': 'fr-FR,fr;q=0.9'})
+    # Headers complets imitant Chrome 122 pour passer les protections anti-bot
+    BROWSER_HEADERS = {
+        'User-Agent': (
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Linux"',
+        'DNT': '1',
+    }
 
-    # ── Étape 1 : récupérer la page de login pour le CSRF ──────────────
+    session = req.Session()
+    session.headers.update(BROWSER_HEADERS)
+
+    # ── Étape 1 : charger la page d'accueil pour obtenir les cookies de session ──
     try:
-        r = session.get('https://www.coursesu.com/login', timeout=20)
+        r = session.get('https://www.coursesu.com/', timeout=20)
+        # On ignore le statut (certains CDN renvoient 403 même pour la home sans cookies)
+    except Exception as e:
+        return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
+
+    # ── Étape 2 : récupérer la page de login pour le CSRF ──────────────
+    try:
+        login_headers = {**BROWSER_HEADERS, 'Referer': 'https://www.coursesu.com/'}
+        r = session.get('https://www.coursesu.com/login', timeout=20, headers=login_headers)
+        if r.status_code == 403:
+            return Response(
+                {'detail': (
+                    'coursesu.com bloque la connexion automatisée (erreur 403). '
+                    'Utilisez l\'import via fichier HAR à la place : '
+                    'F12 → Réseau → recharger la page "Mes listes" → clic droit → Enregistrer en HAR.'
+                )},
+                status=503,
+            )
         r.raise_for_status()
+    except req.exceptions.HTTPError:
+        raise
     except Exception as e:
         return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
 
@@ -623,7 +660,7 @@ def scrape_coursesu(request):
     if not action.startswith('http'):
         action = 'https://www.coursesu.com' + action
 
-    # Collecter tous les champs cachés (CSRF etc.)
+    # Collecter tous les champs cachés (CSRF, tokens, etc.)
     post_data: dict = {}
     for inp in login_form.find_all('input'):
         name = inp.get('name')
@@ -638,9 +675,16 @@ def scrape_coursesu(request):
         if 'password' in key.lower():
             post_data[key] = password
 
-    # ── Étape 2 : soumettre le formulaire ──────────────────────────────
+    # ── Étape 3 : soumettre le formulaire ──────────────────────────────
     try:
-        r = session.post(action, data=post_data, timeout=20, allow_redirects=True)
+        post_headers = {
+            **BROWSER_HEADERS,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://www.coursesu.com',
+            'Referer': 'https://www.coursesu.com/login',
+            'Sec-Fetch-Site': 'same-origin',
+        }
+        r = session.post(action, data=post_data, timeout=20, allow_redirects=True, headers=post_headers)
         r.raise_for_status()
     except Exception as e:
         return Response({'detail': f'Erreur lors de la connexion : {e}'}, status=503)
@@ -652,10 +696,19 @@ def scrape_coursesu(request):
             status=401,
         )
 
-    # ── Étape 3 : scraper les pages de favoris ─────────────────────────
+    # ── Étape 4 : scraper les pages de favoris ─────────────────────────
     products: dict = {}
     offset = 0
     sz = 20
+    ajax_headers = {
+        **BROWSER_HEADERS,
+        'Accept': 'text/html, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': 'https://www.coursesu.com/mon-compte/mes-listes',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+    }
     while True:
         fav_url = (
             f'https://www.coursesu.com/mon-compte/mes-listes'
@@ -663,7 +716,7 @@ def scrape_coursesu(request):
             f'&start={offset}&sz={sz}&listProducts=true&format=ajax'
         )
         try:
-            r = session.get(fav_url, timeout=20)
+            r = session.get(fav_url, timeout=20, headers=ajax_headers)
         except Exception:
             break
         if not r.ok or not r.text.strip():
@@ -694,7 +747,7 @@ def scrape_coursesu(request):
             status=200,
         )
 
-    # ── Étape 4 : filtrer les déjà importés ────────────────────────────
+    # ── Étape 5 : filtrer les déjà importés ────────────────────────────
     already = _already_imported_ids()
     new_products = [p for pid, p in products.items() if pid not in already]
     return Response({
@@ -717,7 +770,6 @@ def import_ingredients(request):
         name = (item.get('name') or '').strip()
         if not name:
             continue
-        # product_url sert de clé de déduplication ; image_url est stockée séparément si besoin
         product_url = (item.get('product_url') or '').strip()
         achat_sys = bool(item.get('achat_systematique', False))
         ing, was_created = Ingredient.objects.get_or_create(
@@ -725,72 +777,6 @@ def import_ingredients(request):
             defaults={
                 'nom': name,
                 'url_produit': product_url,
-                'achat_systematique': achat_sys,
-            },
-        )
-        if was_created:
-            created_names.append(ing.nom)
-        else:
-            skipped_names.append(ing.nom)
-    return Response({
-        'created': len(created_names),
-        'skipped': len(skipped_names),
-        'created_names': created_names,
-    })
-
-    """Reçoit un fichier HAR, extrait les produits favoris Coursesu."""
-    from bs4 import BeautifulSoup
-    har_file = request.FILES.get('har')
-    if not har_file:
-        return Response({'detail': 'Fichier HAR manquant.'}, status=400)
-    try:
-        har = json.loads(har_file.read().decode('utf-8'))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        return Response({'detail': f'Fichier HAR invalide : {e}'}, status=400)
-
-    products = {}
-    for entry in har.get('log', {}).get('entries', []):
-        url = entry.get('request', {}).get('url', '')
-        if 'mes-listes' not in url or 'isPref=true' not in url:
-            continue
-        body = entry.get('response', {}).get('content', {}).get('text', '')
-        if not body:
-            continue
-        try:
-            soup = BeautifulSoup(body, 'html.parser')
-        except Exception:
-            continue
-        for item in soup.find_all(attrs={'data-info-id': True}):
-            pid = item.get('data-info-id', '').strip()
-            name = item.get('data-info-name', '').strip()
-            img = item.get('data-info-img', '').strip()
-            # Agrandir la miniature (90→200)
-            img = img.replace('sw=90&sh=90', 'sw=200&sh=200')
-            if pid and name:
-                products[pid] = {'external_id': pid, 'name': name, 'image_url': img}
-
-    return Response({'products': list(products.values()), 'count': len(products)})
-
-
-@api_view(['POST'])
-@permission_classes([IsAdminUser])
-def import_ingredients(request):
-    """Importe une liste de produits sélectionnés en ingrédients."""
-    items = request.data.get('items', [])
-    if not isinstance(items, list):
-        return Response({'detail': 'Le champ "items" doit être une liste.'}, status=400)
-    created_names, skipped_names = [], []
-    for item in items:
-        name = (item.get('name') or '').strip()
-        if not name:
-            continue
-        image_url = (item.get('image_url') or '').strip()
-        achat_sys = bool(item.get('achat_systematique', False))
-        ing, was_created = Ingredient.objects.get_or_create(
-            nom__iexact=name,
-            defaults={
-                'nom': name,
-                'url_produit': image_url,
                 'achat_systematique': achat_sys,
             },
         )
