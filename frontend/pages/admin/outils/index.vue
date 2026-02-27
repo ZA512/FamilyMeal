@@ -12,24 +12,15 @@
           Choisissez comment récupérer votre liste de favoris :
         </p>
         <div class="grid sm:grid-cols-2 gap-4">
-          <!-- Connexion directe -->
-          <button
-            @click="lancerScraping"
-            :disabled="!coursesuConfigured || scraping"
-            class="flex flex-col items-start gap-2 rounded-xl border-2 p-5 text-left transition-colors hover:border-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
-            :class="coursesuConfigured ? 'border-emerald-200' : 'border-gray-200'"
-          >
+          <!-- Connexion directe — non disponible -->
+          <div class="flex flex-col items-start gap-2 rounded-xl border-2 border-gray-200 p-5 text-left opacity-50 cursor-not-allowed select-none">
             <span class="text-2xl">🔗</span>
             <span class="font-semibold text-gray-800 text-sm">Connexion directe</span>
             <span class="text-xs text-gray-500">
-              FamilyMeal se connecte automatiquement à coursesu.com avec vos identifiants.
+              Non disponible — coursesu.com protège sa page de connexion avec un CAPTCHA Cloudflare qui bloque toute automatisation.
             </span>
-            <span v-if="!coursesuConfigured" class="text-xs text-amber-600">
-              ⚠ Configurez vos identifiants dans
-              <NuxtLink to="/admin/parametres" class="underline">Paramètres</NuxtLink>
-            </span>
-            <span v-else class="text-xs text-emerald-600">✓ Identifiants configurés</span>
-          </button>
+            <span class="text-xs text-red-500">✗ Indisponible</span>
+          </div>
 
           <!-- Import HAR -->
           <button
@@ -67,7 +58,7 @@
       <!-- Chargement -->
       <div v-if="etape === 'chargement'" class="text-center py-10 text-gray-400">
         <div class="inline-block animate-spin text-3xl mb-3">⚙️</div>
-        <p>{{ scraping ? 'Connexion et récupération des favoris…' : 'Analyse du fichier HAR…' }}</p>
+        <p>Analyse du fichier HAR…</p>
         <p class="text-xs mt-1">Cela peut prendre quelques secondes.</p>
       </div>
 
@@ -191,7 +182,6 @@ const recherche = ref('')
 const erreur = ref('')
 const scraping = ref(false)
 const importing = ref(false)
-const coursesuConfigured = ref(false)
 const dejaImportes = ref(0)
 const totalTrouves = ref(0)
 const resultat = ref({ created: 0, skipped: 0, created_names: [] as string[] })
@@ -213,7 +203,6 @@ function reinitialiser() {
   produits.value = []
   recherche.value = ''
   erreur.value = ''
-  scraping.value = false
   dejaImportes.value = 0
   totalTrouves.value = 0
   resultat.value = { created: 0, skipped: 0, created_names: [] }
@@ -230,23 +219,7 @@ function appliquerProduits(data: { products: Omit<Produit, 'selected' | 'achat_s
   etape.value = 'selection'
 }
 
-// ── Connexion directe ──────────────────────────────────────────────
-async function lancerScraping() {
-  erreur.value = ''
-  scraping.value = true
-  etape.value = 'chargement'
-  try {
-    const data = await api.post<any>('/tools/scrape-coursesu/', {})
-    appliquerProduits(data)
-  } catch (e: unknown) {
-    erreur.value = (e as Error).message
-    etape.value = 'methode'
-  } finally {
-    scraping.value = false
-  }
-}
 
-// ── Import HAR ─────────────────────────────────────────────────────
 function onFileChange(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0]
   if (file) analyserFichier(file)
@@ -303,13 +276,5 @@ async function importer() {
   }
 }
 
-// ── Init ───────────────────────────────────────────────────────────
-onMounted(async () => {
-  try {
-    const cfg = await api.get<any>('/config/')
-    coursesuConfigured.value = cfg.coursesu_configured ?? false
-  } catch {
-    // non bloquant
-  }
-})
+
 </script>

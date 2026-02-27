@@ -579,133 +579,22 @@ def parse_har(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def scrape_coursesu(request):
-    """Se connecte à coursesu.com via Playwright (navigateur headless) et retourne les favoris."""
-    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
-    from bs4 import BeautifulSoup
-
-    config = Config.get()
-    login_email = config.coursesu_login.strip()
-    password = config.coursesu_password.strip()
-    if not login_email or not password:
-        return Response(
-            {'detail': 'Identifiants coursesu.com non configurés dans les Paramètres.'},
-            status=400,
-        )
-
-    products: dict = {}
-
-    try:
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            ctx = browser.new_context(
-                user_agent=(
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-                    '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-                ),
-                locale='fr-FR',
-                viewport={'width': 1280, 'height': 900},
+    """
+    La connexion directe à coursesu.com n'est pas disponible : le formulaire de connexion
+    est protégé par un Cloudflare Turnstile (CAPTCHA invisible) qui bloque tout navigateur
+    automatisé. Utilisez l'import via fichier HAR à la place.
+    """
+    return Response(
+        {
+            'detail': (
+                'La connexion directe n\'est pas disponible : coursesu.com utilise '
+                'un CAPTCHA Cloudflare qui bloque les connexions automatisées. '
+                'Utilisez l\'import via fichier HAR : F12 → Réseau → recharger '
+                '"Mes listes" → clic droit → Enregistrer tout en HAR.'
             )
-            page = ctx.new_page()
-
-            # ── Étape 1 : aller sur /connexion (déclenche le flow OIDC ForgeRock) ──
-            try:
-                page.goto('https://www.coursesu.com/connexion', timeout=30000)
-            except PWTimeout:
-                return Response({'detail': 'Timeout en chargeant coursesu.com.'}, status=503)
-
-            # ── Étape 2 : attendre et remplir le formulaire de login ForgeRock ──────
-            # La page redirige vers moncompte.magasins-u.com
-            try:
-                page.wait_for_url('**/moncompte.magasins-u.com/**', timeout=15000)
-            except PWTimeout:
-                # Peut-être déjà connecté ?
-                if 'coursesu.com' in page.url:
-                    pass
-                else:
-                    return Response(
-                        {'detail': f'Redirection vers ForgeRock non détectée (URL: {page.url[:80]}).'},
-                        status=503,
-                    )
-
-            # Remplir email + password (sélecteurs standards ForgeRock AM)
-            try:
-                page.fill('[name="IDToken1"], [id="IDToken1"], [name="username"], [type="email"]',
-                          login_email, timeout=10000)
-                page.fill('[name="IDToken2"], [id="IDToken2"], [name="password"], [type="password"]',
-                          password, timeout=5000)
-                page.click('[type="submit"]', timeout=5000)
-            except PWTimeout:
-                return Response(
-                    {'detail': 'Formulaire de connexion ForgeRock introuvable.'},
-                    status=503,
-                )
-
-            # ── Étape 3 : attendre le retour sur coursesu.com ─────────────────────
-            try:
-                page.wait_for_url('**/coursesu.com/**', timeout=20000)
-            except PWTimeout:
-                # Vérifier si on est sur une page d'erreur
-                err_text = page.locator('body').inner_text()[:200]
-                if 'incorrect' in err_text.lower() or 'invalide' in err_text.lower() or 'erreur' in err_text.lower():
-                    return Response(
-                        {'detail': 'Identifiants incorrects. Vérifiez vos paramètres coursesu.'},
-                        status=401,
-                    )
-                return Response(
-                    {'detail': f'Connexion expirée ou bloquée (URL finale: {page.url[:80]}).'},
-                    status=503,
-                )
-
-            # ── Étape 4 : scraper les favoris via l'API AJAX paginée ─────────────
-            offset = 0
-            sz = 20
-            while True:
-                fav_url = (
-                    f'https://www.coursesu.com/mon-compte/mes-listes'
-                    f'?srule=shoplist-default&isPref=true'
-                    f'&start={offset}&sz={sz}&listProducts=true&format=ajax'
-                )
-                resp = ctx.request.get(fav_url)
-                if not resp.ok or not resp.text():
-                    break
-                page_soup = BeautifulSoup(resp.text(), 'html.parser')
-                items = page_soup.find_all(attrs={'data-info-id': True})
-                if not items:
-                    break
-                for item in items:
-                    pid = item.get('data-info-id', '').strip()
-                    name = item.get('data-info-name', '').strip()
-                    img = item.get('data-info-img', '').strip().replace('sw=90&sh=90', 'sw=200&sh=200')
-                    if pid and name:
-                        products[pid] = {
-                            'external_id': pid,
-                            'name': name,
-                            'image_url': img,
-                            'product_url': _coursesu_product_url(pid),
-                        }
-                if len(items) < sz:
-                    break
-                offset += sz
-
-            browser.close()
-
-    except Exception as e:
-        return Response({'detail': f'Erreur lors du scraping : {e}'}, status=503)
-
-    if not products:
-        return Response(
-            {'detail': 'Aucun produit trouvé. La liste des favoris est peut-être vide.'},
-            status=200,
-        )
-
-    already = _already_imported_ids()
-    new_products = [p for pid, p in products.items() if pid not in already]
-    return Response({
-        'products': new_products,
-        'count': len(new_products),
-        'total': len(products),
-        'already_imported': len(already & products.keys()),
-    })
+        },
+        status=503,
+    )
 
 
 
