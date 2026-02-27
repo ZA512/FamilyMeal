@@ -579,9 +579,8 @@ def parse_har(request):
 @api_view(['POST'])
 @permission_classes([IsAdminUser])
 def scrape_coursesu(request):
-    """Se connecte directement à coursesu.com et retourne les favoris non encore importés."""
-    import re as _re
-    from curl_cffi import requests as req
+    """Se connecte à coursesu.com via Playwright (navigateur headless) et retourne les favoris."""
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
     from bs4 import BeautifulSoup
 
     config = Config.get()
@@ -593,168 +592,105 @@ def scrape_coursesu(request):
             status=400,
         )
 
-    # Headers complets imitant Chrome 122 pour passer les protections anti-bot
-    BROWSER_HEADERS = {
-        'User-Agent': (
-            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-            '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-        ),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Cache-Control': 'max-age=0',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Linux"',
-        'DNT': '1',
-    }
-
-    # impersonate="chrome124" reproduit exactement le fingerprint TLS/HTTP2 de Chrome
-    # ce qui contourne Akamai Bot Manager (la cause réelle du 403)
-    session = req.Session(impersonate="chrome124")
-    session.headers.update(BROWSER_HEADERS)
-
-    # ── Étape 1 : charger la page d'accueil pour obtenir les cookies de session ──
-    try:
-        r = session.get('https://www.coursesu.com/', timeout=20)
-        # On ignore le statut — on veut juste récupérer les cookies
-    except Exception as e:
-        return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
-
-    # ── Étape 2 : trouver l'URL de login (peut changer) et charger le formulaire ──
-    # Chercher le lien de connexion dans la homepage avant de hardcoder /login
-    login_url = 'https://www.coursesu.com/login'
-    try:
-        home_soup = BeautifulSoup(r.text, 'html.parser')
-        for a in home_soup.find_all('a', href=True):
-            href = a['href']
-            if 'login' in href.lower() or 'connexion' in href.lower() or 'sign-in' in href.lower():
-                if href.startswith('http'):
-                    login_url = href
-                else:
-                    login_url = 'https://www.coursesu.com' + href
-                break
-    except Exception:
-        pass  # garder l'URL par défaut
-
-    try:
-        login_headers = {**BROWSER_HEADERS, 'Referer': 'https://www.coursesu.com/'}
-        r = session.get(login_url, timeout=20, headers=login_headers)
-        if r.status_code in (403, 410):
-            return Response(
-                {'detail': (
-                    f'coursesu.com bloque la connexion automatisée (erreur {r.status_code}). '
-                    'Utilisez l\'import via fichier HAR à la place : '
-                    'F12 → Réseau → recharger la page "Mes listes" → clic droit → Enregistrer en HAR.'
-                )},
-                status=503,
-            )
-        r.raise_for_status()
-    except Exception as e:
-        return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
-
-    soup = BeautifulSoup(r.text, 'html.parser')
-
-    # Trouver le formulaire de login (contient un champ e-mail)
-    login_form = None
-    for f in soup.find_all('form'):
-        if f.find('input', {'name': _re.compile(r'(loginEmail|email)', _re.I)}):
-            login_form = f
-            break
-
-    if not login_form:
-        return Response({'detail': 'Formulaire de connexion introuvable sur coursesu.com.'}, status=503)
-
-    action = login_form.get('action', '')
-    if not action.startswith('http'):
-        action = 'https://www.coursesu.com' + action
-
-    # Collecter tous les champs cachés (CSRF, tokens, etc.)
-    post_data: dict = {}
-    for inp in login_form.find_all('input'):
-        name = inp.get('name')
-        val = inp.get('value', '')
-        if name:
-            post_data[name] = val
-
-    # Injecter les identifiants
-    for key in list(post_data.keys()):
-        if 'email' in key.lower():
-            post_data[key] = login_email
-        if 'password' in key.lower():
-            post_data[key] = password
-
-    # ── Étape 3 : soumettre le formulaire ──────────────────────────────
-    try:
-        post_headers = {
-            **BROWSER_HEADERS,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://www.coursesu.com',
-            'Referer': 'https://www.coursesu.com/login',
-            'Sec-Fetch-Site': 'same-origin',
-        }
-        r = session.post(action, data=post_data, timeout=20, allow_redirects=True, headers=post_headers)
-        r.raise_for_status()
-    except Exception as e:
-        return Response({'detail': f'Erreur lors de la connexion : {e}'}, status=503)
-
-    # Vérifier l'échec de connexion (URL de login toujours présente)
-    if '/login' in r.url.lower() and 'mon-compte' not in r.url.lower():
-        return Response(
-            {'detail': 'Connexion échouée. Vérifiez vos identifiants dans les Paramètres.'},
-            status=401,
-        )
-
-    # ── Étape 4 : scraper les pages de favoris ─────────────────────────
     products: dict = {}
-    offset = 0
-    sz = 20
-    ajax_headers = {
-        **BROWSER_HEADERS,
-        'Accept': 'text/html, */*; q=0.01',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': 'https://www.coursesu.com/mon-compte/mes-listes',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-    }
-    while True:
-        fav_url = (
-            f'https://www.coursesu.com/mon-compte/mes-listes'
-            f'?srule=shoplist-default&isPref=true'
-            f'&start={offset}&sz={sz}&listProducts=true&format=ajax'
-        )
-        try:
-            r = session.get(fav_url, timeout=20, headers=ajax_headers)
-        except Exception:
-            break
-        if not r.ok or not r.text.strip():
-            break
-        page_soup = BeautifulSoup(r.text, 'html.parser')
-        items = page_soup.find_all(attrs={'data-info-id': True})
-        if not items:
-            break
-        for item in items:
-            pid = item.get('data-info-id', '').strip()
-            name = item.get('data-info-name', '').strip()
-            img = item.get('data-info-img', '').strip()
-            img = img.replace('sw=90&sh=90', 'sw=200&sh=200')
-            if pid and name:
-                products[pid] = {
-                    'external_id': pid,
-                    'name': name,
-                    'image_url': img,
-                    'product_url': _coursesu_product_url(pid),
-                }
-        if len(items) < sz:
-            break
-        offset += sz
+
+    try:
+        with sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            ctx = browser.new_context(
+                user_agent=(
+                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+                    '(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+                ),
+                locale='fr-FR',
+                viewport={'width': 1280, 'height': 900},
+            )
+            page = ctx.new_page()
+
+            # ── Étape 1 : aller sur /connexion (déclenche le flow OIDC ForgeRock) ──
+            try:
+                page.goto('https://www.coursesu.com/connexion', timeout=30000)
+            except PWTimeout:
+                return Response({'detail': 'Timeout en chargeant coursesu.com.'}, status=503)
+
+            # ── Étape 2 : attendre et remplir le formulaire de login ForgeRock ──────
+            # La page redirige vers moncompte.magasins-u.com
+            try:
+                page.wait_for_url('**/moncompte.magasins-u.com/**', timeout=15000)
+            except PWTimeout:
+                # Peut-être déjà connecté ?
+                if 'coursesu.com' in page.url:
+                    pass
+                else:
+                    return Response(
+                        {'detail': f'Redirection vers ForgeRock non détectée (URL: {page.url[:80]}).'},
+                        status=503,
+                    )
+
+            # Remplir email + password (sélecteurs standards ForgeRock AM)
+            try:
+                page.fill('[name="IDToken1"], [id="IDToken1"], [name="username"], [type="email"]',
+                          login_email, timeout=10000)
+                page.fill('[name="IDToken2"], [id="IDToken2"], [name="password"], [type="password"]',
+                          password, timeout=5000)
+                page.click('[type="submit"]', timeout=5000)
+            except PWTimeout:
+                return Response(
+                    {'detail': 'Formulaire de connexion ForgeRock introuvable.'},
+                    status=503,
+                )
+
+            # ── Étape 3 : attendre le retour sur coursesu.com ─────────────────────
+            try:
+                page.wait_for_url('**/coursesu.com/**', timeout=20000)
+            except PWTimeout:
+                # Vérifier si on est sur une page d'erreur
+                err_text = page.locator('body').inner_text()[:200]
+                if 'incorrect' in err_text.lower() or 'invalide' in err_text.lower() or 'erreur' in err_text.lower():
+                    return Response(
+                        {'detail': 'Identifiants incorrects. Vérifiez vos paramètres coursesu.'},
+                        status=401,
+                    )
+                return Response(
+                    {'detail': f'Connexion expirée ou bloquée (URL finale: {page.url[:80]}).'},
+                    status=503,
+                )
+
+            # ── Étape 4 : scraper les favoris via l'API AJAX paginée ─────────────
+            offset = 0
+            sz = 20
+            while True:
+                fav_url = (
+                    f'https://www.coursesu.com/mon-compte/mes-listes'
+                    f'?srule=shoplist-default&isPref=true'
+                    f'&start={offset}&sz={sz}&listProducts=true&format=ajax'
+                )
+                resp = ctx.request.get(fav_url)
+                if not resp.ok or not resp.text():
+                    break
+                page_soup = BeautifulSoup(resp.text(), 'html.parser')
+                items = page_soup.find_all(attrs={'data-info-id': True})
+                if not items:
+                    break
+                for item in items:
+                    pid = item.get('data-info-id', '').strip()
+                    name = item.get('data-info-name', '').strip()
+                    img = item.get('data-info-img', '').strip().replace('sw=90&sh=90', 'sw=200&sh=200')
+                    if pid and name:
+                        products[pid] = {
+                            'external_id': pid,
+                            'name': name,
+                            'image_url': img,
+                            'product_url': _coursesu_product_url(pid),
+                        }
+                if len(items) < sz:
+                    break
+                offset += sz
+
+            browser.close()
+
+    except Exception as e:
+        return Response({'detail': f'Erreur lors du scraping : {e}'}, status=503)
 
     if not products:
         return Response(
@@ -762,7 +698,6 @@ def scrape_coursesu(request):
             status=200,
         )
 
-    # ── Étape 5 : filtrer les déjà importés ────────────────────────────
     already = _already_imported_ids()
     new_products = [p for pid, p in products.items() if pid not in already]
     return Response({
@@ -771,6 +706,7 @@ def scrape_coursesu(request):
         'total': len(products),
         'already_imported': len(already & products.keys()),
     })
+
 
 
 @api_view(['POST'])
