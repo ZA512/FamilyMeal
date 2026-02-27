@@ -581,7 +581,7 @@ def parse_har(request):
 def scrape_coursesu(request):
     """Se connecte directement à coursesu.com et retourne les favoris non encore importés."""
     import re as _re
-    import requests as req
+    from curl_cffi import requests as req
     from bs4 import BeautifulSoup
 
     config = Config.get()
@@ -615,13 +615,15 @@ def scrape_coursesu(request):
         'DNT': '1',
     }
 
-    session = req.Session()
+    # impersonate="chrome124" reproduit exactement le fingerprint TLS/HTTP2 de Chrome
+    # ce qui contourne Akamai Bot Manager (la cause réelle du 403)
+    session = req.Session(impersonate="chrome124")
     session.headers.update(BROWSER_HEADERS)
 
     # ── Étape 1 : charger la page d'accueil pour obtenir les cookies de session ──
     try:
         r = session.get('https://www.coursesu.com/', timeout=20)
-        # On ignore le statut (certains CDN renvoient 403 même pour la home sans cookies)
+        # On ignore le statut — on veut juste récupérer les cookies
     except Exception as e:
         return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
 
