@@ -627,22 +627,35 @@ def scrape_coursesu(request):
     except Exception as e:
         return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
 
-    # ── Étape 2 : récupérer la page de login pour le CSRF ──────────────
+    # ── Étape 2 : trouver l'URL de login (peut changer) et charger le formulaire ──
+    # Chercher le lien de connexion dans la homepage avant de hardcoder /login
+    login_url = 'https://www.coursesu.com/login'
+    try:
+        home_soup = BeautifulSoup(r.text, 'html.parser')
+        for a in home_soup.find_all('a', href=True):
+            href = a['href']
+            if 'login' in href.lower() or 'connexion' in href.lower() or 'sign-in' in href.lower():
+                if href.startswith('http'):
+                    login_url = href
+                else:
+                    login_url = 'https://www.coursesu.com' + href
+                break
+    except Exception:
+        pass  # garder l'URL par défaut
+
     try:
         login_headers = {**BROWSER_HEADERS, 'Referer': 'https://www.coursesu.com/'}
-        r = session.get('https://www.coursesu.com/login', timeout=20, headers=login_headers)
-        if r.status_code == 403:
+        r = session.get(login_url, timeout=20, headers=login_headers)
+        if r.status_code in (403, 410):
             return Response(
                 {'detail': (
-                    'coursesu.com bloque la connexion automatisée (erreur 403). '
+                    f'coursesu.com bloque la connexion automatisée (erreur {r.status_code}). '
                     'Utilisez l\'import via fichier HAR à la place : '
                     'F12 → Réseau → recharger la page "Mes listes" → clic droit → Enregistrer en HAR.'
                 )},
                 status=503,
             )
         r.raise_for_status()
-    except req.exceptions.HTTPError:
-        raise
     except Exception as e:
         return Response({'detail': f'Impossible de contacter coursesu.com : {e}'}, status=503)
 
