@@ -1,0 +1,21 @@
+{
+  "name": "familymeal-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev --port 3000",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
+  },
+  "devDependencies": {
+    "@nuxtjs/tailwindcss": "^6.12.2",
+    "nuxt": "^3.13.0"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^0.7.0",
+    "pinia": "^2.2.4",
+    "dayjs": "^1.11.13"
+  }
+}

@@ -1,0 +1,90 @@
+# ---------------------------------------------
+# Instructions de base pour la qualité, la sécurité,
+# les tests et l’organisation du code
+# ---------------------------------------------
+
+## Communication
+- Toujours répondre en français.
+- Indiquer explicitement ton degré de certitude : préciser si tu es sûr(e) ou si tu émet des hypothèses (ex. : "Je ne suis pas certain, mais voici une proposition").
+- Lorsque tu explores de nouvelles solutions ou méthodes, expliciter ta démarche pour faciliter la prise de décision.
+
+## Qualité du code
+- Écrire un code clair, lisible, modulaire et bien documenté.
+- Respecter les métriques de qualité (ex. : complexité cyclomatique < 10) et les conventions du projet (indentation, style des noms, guillemets, etc.).
+- Favoriser des modifications incrémentales plutôt que des réécritures totales afin de minimiser les régressions et faciliter la relecture.
+- Avant de supprimer ou réécrire une fonction, vérifier l’impact sur l’existant et éviter des réécritures à 90 % identiques sans justification.
+- Appliquer les principes d’architecture (par exemple, Clean Architecture, SOLID, DRY, KISS) pour assurer une séparation claire des responsabilités.
+
+## Sécurité
+- Valider et assainir toutes les entrées pour prévenir les injections (SQL, XSS, etc.).
+- Appliquer dès la conception les recommandations OWASP (Top 10, ASVS, etc.) et adopter le principe du security by design.
+- Ne jamais inclure de données sensibles en clair ; utiliser des outils dédiés pour la gestion des secrets (ex. : Vault).
+- Utiliser uniquement des composants et bibliothèques à jour, en privilégiant les versions stables ou LTS.
+- Mettre en place une journalisation unifiée (ex. : format CEF) avec rétention sécurisée pour les événements critiques (connexion, changement de mot de passe, accès administrateur, etc.).
+
+## Tests et Validation
+- Intégrer systématiquement des tests unitaires et, si possible, adopter une démarche TDD pour valider les fonctionnalités.
+- Atteindre une couverture de test unitaire > 80 % pour les parties critiques.
+- Pour les API, valider les entrées à l’aide de schémas (ex. : JSON Schema 2020-12) et utiliser des outils adaptés (ex. : Ajv pour JavaScript, Pydantic pour Python).
+- Utiliser des bibliothèques spécifiques pour la validation des formulaires, requêtes SQL, identifiants et autres entrées utilisateur.
+- Documenter le code avec des commentaires pertinents (ex. JSDoc/TSDoc) et intégrer la documentation dans le code source.
+
+## Internationalisation et Gestion des Formats
+- **Dates** :
+  - Stocker les dates en format ISO 8601 (ex. : `YYYY-MM-DD` ou format complet avec heure en UTC) pour garantir une cohérence interne.
+  - Pour l’affichage, utiliser des fonctions de localisation (ex. : `Intl.DateTimeFormat` en JavaScript, `DateTimeFormatter` en Java, etc.) afin d’adapter la présentation au format régional de l’utilisateur.
+- **Nombres** :
+  - Stocker les nombres sous une forme standard (décimal avec le point comme séparateur).
+  - Utiliser des fonctions de formatage (ex. : `Intl.NumberFormat` en JavaScript) pour présenter les chiffres selon la locale de l’utilisateur.
+- **Filtres et Tableaux** :
+  - Lors de l’implémentation de filtres sur des tableaux, traiter les données dans leur format standard interne (ex. ISO 8601 pour les dates) et convertir uniquement pour l’affichage.
+  - Documenter les règles de tri, de filtrage et de recherche afin d’assurer une cohérence dans l’affichage et l’interaction avec les données multilingues.
+
+## Organisation et suivi
+- Utiliser le fichier **scratchpad.md** pour consigner :
+  - Les leçons apprises (ex. : mises à jour de bibliothèques, corrections suite aux retours).
+  - L’organisation et le suivi des tâches (ex. : listes de tâches avec indicateurs [ ] / [X]).
+- Avant chaque nouvelle tâche, consulter et mettre à jour **scratchpad.md** pour planifier les étapes et suivre l’évolution du projet.
+
+## Directives spécifiques pour l’IA
+- Fournir systématiquement une explication détaillée des modifications apportées afin de faciliter la relecture par un humain.
+- Privilégier une analyse contextuelle : évaluer l’impact des modifications avant de supprimer ou réécrire du code existant.
+- Si une réécriture complète est envisagée, justifier le changement et proposer une approche incrémentale.
+- Vérifier l’existence de solutions déjà en place pour éviter les redondances et la duplication de code.
+- Expliquer clairement le niveau de confiance de tes propositions, surtout en cas d’incertitude ou de découverte de nouvelles solutions.
+- Intégrer des mécanismes pour détecter et prévenir la duplication inutile de code.
+- Respecter les bonnes pratiques de développement.
+
+# =============================================
+# Questionnaire de configuration spécifique au projet
+# (Ce bloc est en commentaire. Merci de répondre en supprimant les lignes non pertinentes.)
+# =============================================
+
+# 1. Informations générales :
+Nom du projet et description brève : FamilyMeal
+#   Exemple : "MonApp - Application de gestion de tâches collaboratives"
+#
+Objectif principal du projet et problématiques à résoudre : permettre à des utilisateurs de gérer leurs repas de famille et proposer un planning ou tout le monde pourrait avoir des plats qu'il aime.
+#   Exemple : "Fournir une interface intuitive pour gérer des tâches en temps réel."
+
+# 2. Stack technique et environnement :
+# Frontend : (ex. : React avec hooks et Redux, version X.Y.Z)
+# Backend : (ex. : Node.js avec Express ou Django version X.Y)
+# Base de données : (ex. : PostgreSQL, MongoDB – préciser version et schéma si nécessaire)
+# Environnement de développement et CI/CD : (ex. : VS Code, GitLab CI, Docker, etc.)
+# Système d’exploitation cible : (ex. : Linux, Windows, Android, iOS)
+# Gestion multilingue : (ex. : non / oui avec quel outil?)
+
+# 3. Sécurité et gestion des secrets :
+# Gestion des secrets : (ex. : Utilisation de Vault pour ce projet, ou "aucun")
+# Méthodes attendues pour la validation et la sanitisation des entrées : (ex. : Librairie X pour filtrer les inputs)
+
+# 4. Spécificités et contraintes du projet (pour orienter les suggestions de l’IA) :
+# Fonctionnalités clés à implémenter ou à préserver (ex. : composant de date personnalisé, appels API GraphQL)
+# Conventions de codage et patterns à respecter (ex. : Clean Code, architecture MVC, utilisation des hooks en React)
+# Architecture générale : (ex. : monolithique, microservices, serverless – à préciser)
+# Cas d’usage typiques ou scénarios d’erreurs fréquents à anticiper (ex. : gestion des échecs de connexion)
+# Contraintes supplémentaires (performance, compatibilité mobile, etc.)
+
+# 5. Instructions supplémentaires :
+# Guide d’adaptation des suggestions : (ex. : "Si le projet utilise React, privilégier les composants fonctionnels et hooks. Si Vault est utilisé, générer le code pour intégrer les appels à l’API Vault.")

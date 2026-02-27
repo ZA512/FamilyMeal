@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Environnements virtuels
+venv/
+.venv/
+ENV/
+env/
+
+# Variables d'environnement (ne jamais commiter)
+.env
+
+# Vue.js / Nuxt / Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+/frontend/dist/
+/frontend/node_modules/
+/frontend/.nuxt/
+/frontend/.output/
+/frontend/.nitro/
+
+# Éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# HAR files (peuvent contenir des cookies/tokens)
+*.har
