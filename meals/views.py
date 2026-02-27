@@ -101,6 +101,7 @@ def lecteur_choisir_membre(request):
 class MembreViewSet(viewsets.ModelViewSet):
     queryset = Membre.objects.all()
     serializer_class = MembreSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -115,6 +116,7 @@ class MembreViewSet(viewsets.ModelViewSet):
 class CategorieIngredientViewSet(viewsets.ModelViewSet):
     queryset = CategorieIngredient.objects.all()
     serializer_class = CategorieIngredientSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -125,6 +127,7 @@ class CategorieIngredientViewSet(viewsets.ModelViewSet):
 class IngredientViewSet(viewsets.ModelViewSet):
     queryset = Ingredient.objects.select_related('categorie').all()
     serializer_class = IngredientSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
@@ -145,6 +148,7 @@ class IngredientViewSet(viewsets.ModelViewSet):
 
 class PlatViewSet(viewsets.ModelViewSet):
     queryset = Plat.objects.prefetch_related('disponibilites', 'plat_ingredients__ingredient').all()
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action in ('create', 'update', 'partial_update'):
@@ -200,7 +204,7 @@ class PreferenceViewSet(viewsets.ModelViewSet):
     serializer_class = PreferenceSerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'proposer_modification'):
+        if self.action in ('list', 'retrieve', 'proposer_modification', 'set_preference'):
             return [IsReaderOrAdmin()]
         return [IsAdminUser()]
 
@@ -237,10 +241,31 @@ class PreferenceViewSet(viewsets.ModelViewSet):
         )
         return Response({'status': 'Proposition soumise, en attente de validation.'}, status=201)
 
+    @action(detail=False, methods=['post'], url_path='set')
+    def set_preference(self, request):
+        """Upsert direct d'une préférence. Admin peut spécifier membre, lecteur utilise son propre membre_id."""
+        if request.user.is_staff:
+            membre_id = request.data.get('membre')
+            if not membre_id:
+                return Response({'detail': 'membre requis.'}, status=400)
+        else:
+            membre_id = getattr(request.user, 'membre_id', None)
+            if not membre_id:
+                return Response({'detail': 'Vous devez d\'abord choisir votre profil.'}, status=400)
 
-# ─────────────────────────────────────────
-# Demandes de modification
-# ─────────────────────────────────────────
+        plat_id = request.data.get('plat')
+        note = request.data.get('note')
+        if not plat_id or not note:
+            return Response({'detail': 'plat et note sont requis.'}, status=400)
+        if note not in ('aime', 'neutre', 'deteste'):
+            return Response({'detail': 'Note invalide (aime, neutre, deteste).'}, status=400)
+
+        pref, _ = Preference.objects.update_or_create(
+            membre_id=membre_id,
+            plat_id=plat_id,
+            defaults={'note': note},
+        )
+        return Response(PreferenceSerializer(pref).data)
 
 class DemandeModificationViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = DemandeModification.objects.select_related('membre', 'plat').all()
@@ -455,8 +480,11 @@ class ListeCoursesViewSet(viewsets.ModelViewSet):
                 )
 
         aujourd_hui = date_type.today()
+        from django.db.models import Exists, OuterRef
         for ingredient in Ingredient.objects.filter(
-            lie_a_plat=False, achat_systematique=False,
+            achat_systematique=False,
+        ).filter(
+            ~Exists(PlatIngredient.objects.filter(ingredient=OuterRef('pk')))
         ).prefetch_related('historique_achats'):
             achats = list(ingredient.historique_achats.values_list('date_achat', flat=True)[:5])
             if len(achats) < 2:
@@ -553,8 +581,38 @@ def parse_har(request):
             soup = BeautifulSoup(body, 'html.parser')
         except Exception:
             continue
+        # Stratégie 1 : lire les product-tiles (contiennent prix + bouton data-info-*)
+        for tile in soup.find_all('div', class_='product-tile'):
+            btn = tile.find(attrs={'data-info-id': True})
+            if not btn:
+                continue
+            pid = btn.get('data-info-id', '').strip()
+            name = btn.get('data-info-name', '').strip()
+            img = btn.get('data-info-img', '').strip()
+            img = img.replace('sw=90&sh=90', 'sw=200&sh=200')
+            # Prix — élément .sale-price à l'intérieur de la tile
+            prix = None
+            price_el = tile.find(class_='sale-price')
+            if price_el:
+                import re as _re
+                prix_str = price_el.get_text(strip=True)
+                m = _re.search(r'(\d+)[,.](\d{2})', prix_str)
+                if m:
+                    prix = float(f'{m.group(1)}.{m.group(2)}')
+            if pid and name:
+                products[pid] = {
+                    'external_id': pid,
+                    'name': name,
+                    'image_url': img,
+                    'product_url': _coursesu_product_url(pid),
+                    'prix': prix,
+                }
+        # Stratégie 2 (fallback) : boutons data-info-id hors tile (pas de prix)
+        seen = set(products.keys())
         for item in soup.find_all(attrs={'data-info-id': True}):
             pid = item.get('data-info-id', '').strip()
+            if pid in seen:
+                continue
             name = item.get('data-info-name', '').strip()
             img = item.get('data-info-img', '').strip()
             img = img.replace('sw=90&sh=90', 'sw=200&sh=200')
@@ -564,9 +622,19 @@ def parse_har(request):
                     'name': name,
                     'image_url': img,
                     'product_url': _coursesu_product_url(pid),
+                    'prix': None,
                 }
 
     already = _already_imported_ids()
+
+    # Mettre à jour les image_url manquantes sur les ingrédients déjà importés
+    for pid, p in products.items():
+        if pid in already and p.get('image_url'):
+            Ingredient.objects.filter(
+                url_produit=_coursesu_product_url(pid),
+                image_url='',
+            ).update(image_url=p['image_url'])
+
     new_products = [p for pid, p in products.items() if pid not in already]
     return Response({
         'products': new_products,
@@ -611,18 +679,38 @@ def import_ingredients(request):
         if not name:
             continue
         product_url = (item.get('product_url') or '').strip()
+        image_url = (item.get('image_url') or '').strip()
         achat_sys = bool(item.get('achat_systematique', False))
+        prix = item.get('prix')
+        if prix is not None:
+            try:
+                prix = float(prix)
+            except (TypeError, ValueError):
+                prix = None
         ing, was_created = Ingredient.objects.get_or_create(
             nom__iexact=name,
             defaults={
                 'nom': name,
                 'url_produit': product_url,
+                'image_url': image_url,
                 'achat_systematique': achat_sys,
+                'lie_a_plat': False,
+                'prix': prix,
             },
         )
         if was_created:
             created_names.append(ing.nom)
         else:
+            # Mettre à jour le prix et l'image_url si disponibles et manquants
+            updates = {}
+            if prix is not None and ing.prix is None:
+                updates['prix'] = prix
+            if image_url and not ing.image_url:
+                updates['image_url'] = image_url
+            if updates:
+                for field, value in updates.items():
+                    setattr(ing, field, value)
+                ing.save(update_fields=list(updates.keys()))
             skipped_names.append(ing.nom)
     return Response({
         'created': len(created_names),

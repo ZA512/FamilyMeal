@@ -55,6 +55,11 @@ class Ingredient(models.Model):
     )
     unite = models.CharField(max_length=20, blank=True, help_text='g, kg, cl, ml, pièce, boîte...')
     url_produit = models.URLField(blank=True, help_text='URL sur le site de courses (ex: courseu.com)')
+    image_url = models.URLField(blank=True, help_text='URL miniature du produit (import HAR)')
+    prix = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Prix unitaire indicatif (€)',
+    )
     achat_systematique = models.BooleanField(default=False, help_text='Toujours dans la liste de courses')
     lie_a_plat = models.BooleanField(
         default=True, help_text='False = produit de fond (sel, beurre...) sans recette associée',

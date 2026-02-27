@@ -24,22 +24,19 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Ingrédient principal</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Statut</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Secours</th>
+            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Coût</th>
             <th class="px-4 py-3"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-          <tr v-for="plat in platsFiltres" :key="plat.id" class="hover:bg-gray-50">
+          <tr v-for="plat in platsFiltres" :key="plat.id" class="hover:bg-gray-50 group">
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <img v-if="plat.photo" :src="plat.photo" alt="" class="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
                 <span class="font-medium text-sm text-gray-800">{{ plat.nom }}</span>
               </div>
-            </td>
-            <td class="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">
-              {{ ingPrincipalLabel(plat.ingredient_principal) }}
             </td>
             <td class="px-4 py-3 hidden md:table-cell">
               <span class="px-2 py-0.5 rounded-full text-xs font-medium"
@@ -50,9 +47,16 @@
             <td class="px-4 py-3 text-sm text-gray-400 hidden md:table-cell">
               {{ plat.est_secours ? '✓' : '' }}
             </td>
+            <td class="px-4 py-3 text-right hidden md:table-cell">
+              <span v-if="plat.cout_estime !== null" class="text-sm font-medium text-emerald-700">{{ plat.cout_estime.toFixed(2) }} €</span>
+              <span v-else class="text-xs text-gray-300">—</span>
+            </td>
             <td class="px-4 py-3 text-right">
-              <button @click="ouvrirEdition(plat)" class="text-xs text-emerald-600 hover:underline mr-3">Modifier</button>
-              <button @click="supprimerPlat(plat)" class="text-xs text-red-500 hover:underline">Supprimer</button>
+              <span class="opacity-0 group-hover:opacity-100 transition-opacity inline-flex gap-3">
+                <button @click="ouvrirEdition(plat)" class="text-xs text-emerald-600 hover:underline">Modifier</button>
+                <button @click="dupliquerPlat(plat)" class="text-xs text-blue-500 hover:underline">Dupliquer</button>
+                <button @click="supprimerPlat(plat)" class="text-xs text-red-500 hover:underline">Supprimer</button>
+              </span>
             </td>
           </tr>
           <tr v-if="platsFiltres.length === 0">
@@ -71,18 +75,9 @@
         </div>
         <div class="px-6 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
           <!-- Nom -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="label">Nom *</label>
-              <input v-model="form.nom" type="text" required class="input" />
-            </div>
-            <div>
-              <label class="label">Ingrédient principal</label>
-              <select v-model="form.ingredient_principal" class="input">
-                <option value="">—</option>
-                <option v-for="opt in ingOpts" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-              </select>
-            </div>
+          <div>
+            <label class="label">Nom *</label>
+            <input v-model="form.nom" type="text" required class="input" />
           </div>
           <div>
             <label class="label">Description</label>
@@ -137,25 +132,36 @@
           <div>
             <label class="label">Ingrédients du plat</label>
             <div class="space-y-2">
-              <div v-for="(pi, idx) in form.plat_ingredients" :key="idx" class="flex gap-2 items-center">
-                <select v-model="pi.ingredient" class="input flex-1 text-xs">
-                  <option value="" disabled>Ingrédient</option>
-                  <option v-for="ing in ingredients" :key="ing.id" :value="ing.id">{{ ing.nom }}</option>
-                </select>
-                <input v-model.number="pi.quantite_par_portion" type="number" step="0.01" placeholder="Qté" class="input w-20 text-xs" />
-                <input v-model="pi.unite" placeholder="unité" class="input w-20 text-xs" />
-                <button @click="form.plat_ingredients.splice(idx, 1)" class="text-red-400 text-sm">✕</button>
+              <div v-for="(pi, idx) in form.plat_ingredients" :key="idx" class="flex flex-col gap-1 bg-gray-50 border border-gray-200 rounded-lg p-2">
+                <IngredientCombobox
+                  v-model="pi.ingredient"
+                  :ingredients="ingredients"
+                  placeholder="Rechercher un ingrédient…"
+                  class="w-full"
+                />
+                <div class="flex gap-2 items-center">
+                  <input v-model.number="pi.quantite_par_portion" type="number" step="0.01" placeholder="Qté" class="input w-24 text-xs" />
+                  <input v-model="pi.unite" placeholder="unité" class="input w-24 text-xs" />
+                  <button @click="form.plat_ingredients.splice(idx, 1)" class="ml-auto text-red-400 hover:text-red-600 text-sm leading-none px-1">✕</button>
+                </div>
               </div>
-              <button @click="form.plat_ingredients.push({ ingredient: '', quantite_par_portion: null, unite: '', notes: '' })"
+              <button @click="form.plat_ingredients.push({ ingredient: null, quantite_par_portion: null, unite: '', notes: '' })"
                 class="text-xs text-emerald-600 hover:underline">+ Ajouter un ingrédient</button>
             </div>
           </div>
         </div>
-        <div class="flex justify-end gap-3 px-6 py-4 border-t">
-          <button @click="modal = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Annuler</button>
-          <button @click="sauvegarder" :disabled="saving" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
-            {{ saving ? 'Sauvegarde…' : 'Sauvegarder' }}
-          </button>
+        <div class="flex items-center justify-between gap-3 px-6 py-4 border-t">
+          <div class="text-sm text-gray-500">
+            Coût estimé :
+            <span v-if="coutFormulaire !== null" class="font-semibold text-emerald-700">{{ coutFormulaire.toFixed(2) }} € / portion</span>
+            <span v-else class="text-gray-300">aucun prix renseigné</span>
+          </div>
+          <div class="flex gap-3">
+            <button @click="modal = false" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Annuler</button>
+            <button @click="sauvegarder" :disabled="saving" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50">
+              {{ saving ? 'Sauvegarde…' : 'Sauvegarder' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -177,17 +183,6 @@ const filtreSecours = ref('')
 const modal = ref(false)
 const editId = ref<number | null>(null)
 
-const ingOpts = [
-  { value: 'viande', label: 'Viande' },
-  { value: 'poisson', label: 'Poisson' },
-  { value: 'vegetarien', label: 'Végétarien' },
-  { value: 'porc', label: 'Porc' },
-  { value: 'veau', label: 'Veau' },
-  { value: 'agneau', label: 'Agneau' },
-  { value: 'volaille', label: 'Volaille' },
-  { value: 'autre', label: 'Autre' },
-]
-
 const JOURS = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche']
 const JOURS_L = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche']
 const dispoOpts = [
@@ -198,7 +193,7 @@ const dispoOpts = [
 ]
 
 const emptyForm = () => ({
-  nom: '', description: '', ingredient_principal: '', statut: 'actif',
+  nom: '', description: '', statut: 'actif',
   temps_preparation: null, est_secours: false, est_obligatoire: false,
   saison_debut: '', saison_fin: '', disponibilites: [] as string[],
   plat_ingredients: [] as any[],
@@ -213,9 +208,18 @@ const platsFiltres = computed(() => {
   })
 })
 
-function ingPrincipalLabel(v: string) {
-  return ingOpts.find(o => o.value === v)?.label || v || ''
-}
+const coutFormulaire = computed<number | null>(() => {
+  let total = 0
+  let hasAny = false
+  for (const pi of form.plat_ingredients) {
+    const ing = ingredients.value.find(i => i.id === pi.ingredient)
+    if (ing && ing.prix !== null && pi.quantite_par_portion) {
+      total += Number(ing.prix) * pi.quantite_par_portion
+      hasAny = true
+    }
+  }
+  return hasAny ? Math.round(total * 100) / 100 : null
+})
 
 function statutClass(s: string) {
   if (s === 'actif') return 'bg-emerald-100 text-emerald-700'
@@ -229,21 +233,21 @@ function ouvrirNouveau() {
   modal.value = true
 }
 
-function ouvrirEdition(plat: any) {
+async function ouvrirEdition(plat: any) {
   editId.value = plat.id
-  const dispos = (plat.disponibilites || []).map((d: any) => `${d.jour}_${d.creneau}`)
-  const pis = (plat.plat_ingredients || []).map((pi: any) => ({
+  const data: any = await api.get(`/plats/${plat.id}/`)
+  const dispos = (data.disponibilites || []).map((d: any) => `${d.jour}_${d.creneau}`)
+  const pis = (data.plat_ingredients || []).map((pi: any) => ({
     ingredient: pi.ingredient,
     quantite_par_portion: pi.quantite_par_portion,
     unite: pi.unite,
     notes: pi.notes || '',
   }))
   Object.assign(form, {
-    nom: plat.nom, description: plat.description || '',
-    ingredient_principal: plat.ingredient_principal || '',
-    statut: plat.statut, temps_preparation: plat.temps_preparation,
-    est_secours: plat.est_secours, est_obligatoire: plat.est_obligatoire,
-    saison_debut: plat.saison_debut || '', saison_fin: plat.saison_fin || '',
+    nom: data.nom, description: data.description || '',
+    statut: data.statut, temps_preparation: data.temps_preparation,
+    est_secours: data.est_secours, est_obligatoire: data.est_obligatoire,
+    saison_debut: data.saison_debut || '', saison_fin: data.saison_fin || '',
     disponibilites: dispos, plat_ingredients: pis,
   })
   modal.value = true
@@ -254,7 +258,6 @@ async function sauvegarder() {
   try {
     const payload: any = {
       nom: form.nom, description: form.description,
-      ingredient_principal: form.ingredient_principal || null,
       statut: form.statut, temps_preparation: form.temps_preparation || null,
       est_secours: form.est_secours, est_obligatoire: form.est_obligatoire,
       saison_debut: form.saison_debut || null, saison_fin: form.saison_fin || null,
@@ -276,6 +279,26 @@ async function sauvegarder() {
   } finally {
     saving.value = false
   }
+}
+
+async function dupliquerPlat(plat: any) {
+  editId.value = null
+  const data: any = await api.get(`/plats/${plat.id}/`)
+  const dispos = (data.disponibilites || []).map((d: any) => `${d.jour}_${d.creneau}`)
+  const pis = (data.plat_ingredients || []).map((pi: any) => ({
+    ingredient: pi.ingredient,
+    quantite_par_portion: pi.quantite_par_portion,
+    unite: pi.unite,
+    notes: pi.notes || '',
+  }))
+  Object.assign(form, {
+    nom: `${plat.nom} (copie)`, description: data.description || '',
+    statut: data.statut, temps_preparation: data.temps_preparation,
+    est_secours: data.est_secours, est_obligatoire: data.est_obligatoire,
+    saison_debut: data.saison_debut || '', saison_fin: data.saison_fin || '',
+    disponibilites: dispos, plat_ingredients: pis,
+  })
+  modal.value = true
 }
 
 async function supprimerPlat(plat: any) {

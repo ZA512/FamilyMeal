@@ -98,6 +98,7 @@
                 </th>
                 <th class="px-3 py-2 w-16 text-left text-xs text-gray-500 uppercase">Image</th>
                 <th class="px-3 py-2 text-left text-xs text-gray-500 uppercase">Nom (modifiable)</th>
+                <th class="px-3 py-2 w-24 text-right text-xs text-gray-500 uppercase hidden sm:table-cell">Prix</th>
                 <th class="px-3 py-2 w-36 text-center text-xs text-gray-500 uppercase hidden sm:table-cell">Achat systématique</th>
               </tr>
             </thead>
@@ -115,6 +116,10 @@
                   <input v-model="p.name" type="text"
                     class="w-full border border-transparent hover:border-gray-300 focus:border-emerald-400 rounded px-2 py-1 text-sm focus:outline-none transition-colors"
                   />
+                </td>
+                <td class="px-3 py-2 text-right hidden sm:table-cell">
+                  <span v-if="p.prix !== null" class="text-sm text-gray-700">{{ p.prix.toFixed(2) }} €</span>
+                  <span v-else class="text-xs text-gray-300">—</span>
                 </td>
                 <td class="px-3 py-2 text-center hidden sm:table-cell">
                   <input type="checkbox" v-model="p.achat_systematique" />
@@ -170,6 +175,7 @@ type Produit = {
   name: string
   image_url: string
   product_url: string
+  prix: number | null
   achat_systematique: boolean
   selected: boolean
 }
@@ -215,7 +221,7 @@ function appliquerProduits(data: { products: Omit<Produit, 'selected' | 'achat_s
     etape.value = 'vide'
     return
   }
-  produits.value = data.products.map(p => ({ ...p, achat_systematique: false, selected: true }))
+  produits.value = data.products.map(p => ({ ...p, prix: p.prix ?? null, achat_systematique: false, selected: true }))
   etape.value = 'selection'
 }
 
@@ -263,6 +269,7 @@ async function importer() {
       name: p.name.trim(),
       image_url: p.image_url,
       product_url: p.product_url,
+      prix: p.prix,
       achat_systematique: p.achat_systematique,
     }))
   try {

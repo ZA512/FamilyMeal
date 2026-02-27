@@ -79,6 +79,7 @@ const navItems = [
   { path: '/admin/membres', icon: '👨‍👩‍👧', label: 'Membres' },
   { path: '/admin/courses', icon: '🛒', label: 'Liste de courses' },
   { path: '/admin/demandes', icon: '📬', label: 'Demandes' },
+  { path: '/admin/preferences', icon: '❤️', label: 'Préférences' },
   { path: '/admin/parametres', icon: '⚙️', label: 'Paramètres' },
   { path: '/admin/outils', icon: '🔧', label: 'Outils' },
 ]

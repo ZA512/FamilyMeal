@@ -24,12 +24,17 @@ class IngredientSerializer(serializers.ModelSerializer):
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     dernier_achat = serializers.SerializerMethodField()
 
+    en_plat = serializers.SerializerMethodField()
+
     class Meta:
         model = Ingredient
         fields = [
             'id', 'nom', 'categorie', 'categorie_nom', 'unite', 'url_produit',
-            'achat_systematique', 'lie_a_plat', 'dernier_achat',
+            'image_url', 'prix', 'achat_systematique', 'en_plat', 'dernier_achat',
         ]
+
+    def get_en_plat(self, obj):
+        return obj.platingredient_set.exists()
 
     def get_dernier_achat(self, obj):
         achat = obj.historique_achats.first()
@@ -51,25 +56,42 @@ class DisponibilitePlatSerializer(serializers.ModelSerializer):
 class PlatIngredientSerializer(serializers.ModelSerializer):
     ingredient_nom = serializers.CharField(source='ingredient.nom', read_only=True)
     ingredient_unite = serializers.CharField(source='ingredient.unite', read_only=True)
+    ingredient_prix = serializers.DecimalField(
+        source='ingredient.prix', max_digits=6, decimal_places=2, read_only=True, allow_null=True,
+    )
 
     class Meta:
         model = PlatIngredient
-        fields = ['id', 'ingredient', 'ingredient_nom', 'ingredient_unite',
+        fields = ['id', 'ingredient', 'ingredient_nom', 'ingredient_unite', 'ingredient_prix',
                   'quantite_par_portion', 'unite', 'notes']
 
 
 class PlatListSerializer(serializers.ModelSerializer):
     """Serializer léger pour les listes."""
+    cout_estime = serializers.SerializerMethodField()
+
     class Meta:
         model = Plat
         fields = ['id', 'nom', 'temps_preparation', 'ingredient_principal',
-                  'est_secours', 'est_obligatoire', 'statut', 'photo']
+                  'est_secours', 'est_obligatoire', 'statut', 'photo', 'cout_estime']
+
+    def get_cout_estime(self, obj):
+        total = 0.0
+        has_any = False
+        for pi in obj.plat_ingredients.select_related('ingredient').all():
+            if pi.ingredient.prix is not None and pi.quantite_par_portion:
+                total += float(pi.ingredient.prix) * pi.quantite_par_portion
+                has_any = True
+        return round(total, 2) if has_any else None
 
 
 class PlatDetailSerializer(serializers.ModelSerializer):
     disponibilites = DisponibilitePlatSerializer(many=True, read_only=True)
     plat_ingredients = PlatIngredientSerializer(many=True, read_only=True)
     nb_fois_cuisine = serializers.SerializerMethodField()
+    cout_estime = serializers.SerializerMethodField()
+    saison_debut = serializers.CharField(allow_blank=True, allow_null=True, required=False, default='')
+    saison_fin = serializers.CharField(allow_blank=True, allow_null=True, required=False, default='')
 
     class Meta:
         model = Plat
@@ -77,17 +99,28 @@ class PlatDetailSerializer(serializers.ModelSerializer):
             'id', 'nom', 'description', 'photo', 'temps_preparation',
             'ingredient_principal', 'est_secours', 'est_obligatoire',
             'saison_debut', 'saison_fin', 'statut', 'propose_par',
-            'disponibilites', 'plat_ingredients', 'nb_fois_cuisine', 'created_at',
+            'disponibilites', 'plat_ingredients', 'nb_fois_cuisine', 'cout_estime', 'created_at',
         ]
         read_only_fields = ['created_at']
 
     def get_nb_fois_cuisine(self, obj):
         return obj.historique.count()
 
+    def get_cout_estime(self, obj):
+        total = 0.0
+        has_any = False
+        for pi in obj.plat_ingredients.select_related('ingredient').all():
+            if pi.ingredient.prix is not None and pi.quantite_par_portion:
+                total += float(pi.ingredient.prix) * pi.quantite_par_portion
+                has_any = True
+        return round(total, 2) if has_any else None
+
 
 class PlatWriteSerializer(serializers.ModelSerializer):
     disponibilites = DisponibilitePlatSerializer(many=True, required=False)
     plat_ingredients = PlatIngredientSerializer(many=True, required=False)
+    saison_debut = serializers.CharField(allow_blank=True, allow_null=True, required=False, default='')
+    saison_fin = serializers.CharField(allow_blank=True, allow_null=True, required=False, default='')
 
     class Meta:
         model = Plat
@@ -109,6 +142,8 @@ class PlatWriteSerializer(serializers.ModelSerializer):
             PlatIngredient.objects.create(plat=plat, **i)
 
     def create(self, validated_data):
+        validated_data['saison_debut'] = validated_data.get('saison_debut') or ''
+        validated_data['saison_fin'] = validated_data.get('saison_fin') or ''
         disponibilites_data = validated_data.pop('disponibilites', [])
         ingredients_data = validated_data.pop('plat_ingredients', [])
         plat = Plat.objects.create(**validated_data)
@@ -117,6 +152,8 @@ class PlatWriteSerializer(serializers.ModelSerializer):
         return plat
 
     def update(self, instance, validated_data):
+        validated_data['saison_debut'] = validated_data.get('saison_debut') or ''
+        validated_data['saison_fin'] = validated_data.get('saison_fin') or ''
         disponibilites_data = validated_data.pop('disponibilites', None)
         ingredients_data = validated_data.pop('plat_ingredients', None)
         for attr, value in validated_data.items():
@@ -227,11 +264,24 @@ class CreneauPlanningSerializer(serializers.ModelSerializer):
 
 class SemaineMenuSerializer(serializers.ModelSerializer):
     creneaux = CreneauPlanningSerializer(many=True, read_only=True)
+    cout_semaine = serializers.SerializerMethodField()
 
     class Meta:
         model = SemaineMenu
-        fields = ['id', 'date_debut', 'statut', 'created_at', 'publie_at', 'creneaux']
+        fields = ['id', 'date_debut', 'statut', 'created_at', 'publie_at', 'creneaux', 'cout_semaine']
         read_only_fields = ['created_at', 'publie_at']
+
+    def get_cout_semaine(self, obj):
+        total = 0.0
+        has_any = False
+        for creneau in obj.creneaux.filter(plat_principal__isnull=False).prefetch_related(
+            'plat_principal__plat_ingredients__ingredient'
+        ):
+            for pi in creneau.plat_principal.plat_ingredients.select_related('ingredient').all():
+                if pi.ingredient.prix is not None and pi.quantite_par_portion:
+                    total += float(pi.ingredient.prix) * pi.quantite_par_portion
+                    has_any = True
+        return round(total, 2) if has_any else None
 
 
 class SemaineMenuListSerializer(serializers.ModelSerializer):
@@ -243,6 +293,7 @@ class SemaineMenuListSerializer(serializers.ModelSerializer):
 
     def get_nb_creneaux(self, obj):
         return obj.creneaux.filter(plat_principal__isnull=False).count()
+
 
 
 class ItemListeCoursesSerializer(serializers.ModelSerializer):

@@ -24,6 +24,7 @@
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Catégorie</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Unité</th>
+            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Prix</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Options</th>
             <th class="px-4 py-3"></th>
           </tr>
@@ -35,9 +36,14 @@
               {{ categorieNom(ing.categorie) }}
             </td>
             <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">{{ ing.unite || '—' }}</td>
+            <td class="px-4 py-3 text-sm text-right hidden md:table-cell">
+              <span v-if="ing.prix !== null" class="font-medium text-gray-700">{{ Number(ing.prix).toFixed(2) }} €</span>
+              <span v-else class="text-gray-300">—</span>
+            </td>
             <td class="px-4 py-3 text-sm text-gray-500 hidden md:table-cell space-x-2">
-              <span v-if="ing.achat_systematique" class="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-xs">Systématique</span>
-              <span v-if="ing.lie_a_plat" class="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-xs">Lié à plat</span>
+              <span v-if="ing.achat_systematique" class="px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-xs">🔁 Systématique</span>
+              <span v-else-if="ing.en_plat" class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded text-xs">🍽 Associé à un plat</span>
+              <span v-else class="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">🛋 Divers</span>
               <a v-if="ing.url_produit" :href="ing.url_produit" target="_blank" rel="noopener noreferrer" class="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-xs hover:underline">🔗 URL</a>
             </td>
             <td class="px-4 py-3 text-right">
@@ -46,7 +52,7 @@
             </td>
           </tr>
           <tr v-if="ingredientsFiltres.length === 0">
-            <td colspan="5" class="px-4 py-8 text-center text-gray-400 text-sm">Aucun ingrédient trouvé.</td>
+            <td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm">Aucun ingrédient trouvé.</td>
           </tr>
         </tbody>
       </table>
@@ -81,14 +87,14 @@
             <label class="label">URL produit en ligne</label>
             <input v-model="form.url_produit" type="url" class="input" />
           </div>
+          <div>
+            <label class="label">Prix unitaire (€)</label>
+            <input v-model.number="form.prix" type="number" min="0" step="0.01" placeholder="ex : 2.49" class="input" />
+          </div>
           <div class="flex flex-col gap-2">
             <label class="flex items-center gap-2 cursor-pointer text-sm">
               <input type="checkbox" v-model="form.achat_systematique" class="rounded" />
               Achat systématique (toujours dans la liste de courses)
-            </label>
-            <label class="flex items-center gap-2 cursor-pointer text-sm">
-              <input type="checkbox" v-model="form.lie_a_plat" class="rounded" />
-              Lié à un plat uniquement
             </label>
           </div>
           <div v-if="error" class="text-sm text-red-600">{{ error }}</div>
@@ -120,7 +126,7 @@ const modal = ref(false)
 const editId = ref<number | null>(null)
 const error = ref('')
 
-const emptyForm = () => ({ nom: '', categorie: '' as any, unite: '', url_produit: '', achat_systematique: false, lie_a_plat: false })
+const emptyForm = () => ({ nom: '', categorie: '' as any, unite: '', url_produit: '', prix: null as number | null, achat_systematique: false })
 const form = reactive(emptyForm())
 
 const ingredientsFiltres = computed(() => ingredients.value.filter(i => {
@@ -142,7 +148,7 @@ function ouvrirNouveau() {
 
 function ouvrirEdition(ing: any) {
   editId.value = ing.id
-  Object.assign(form, { nom: ing.nom, categorie: ing.categorie || '', unite: ing.unite || '', url_produit: ing.url_produit || '', achat_systematique: ing.achat_systematique, lie_a_plat: ing.lie_a_plat })
+  Object.assign(form, { nom: ing.nom, categorie: ing.categorie || '', unite: ing.unite || '', url_produit: ing.url_produit || '', prix: ing.prix !== null ? Number(ing.prix) : null, achat_systematique: ing.achat_systematique })
   error.value = ''
   modal.value = true
 }
@@ -151,7 +157,7 @@ async function sauvegarder() {
   saving.value = true
   error.value = ''
   try {
-    const payload = { nom: form.nom, categorie: form.categorie || null, unite: form.unite, url_produit: form.url_produit || null, achat_systematique: form.achat_systematique, lie_a_plat: form.lie_a_plat }
+    const payload = { nom: form.nom, categorie: form.categorie || null, unite: form.unite, url_produit: form.url_produit || null, prix: form.prix ?? null, achat_systematique: form.achat_systematique }
     if (editId.value) {
       await api.put(`/ingredients/${editId.value}/`, payload)
     } else {

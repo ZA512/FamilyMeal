@@ -83,6 +83,12 @@
       </table>
     </div>
 
+    <!-- Coût estimé de la semaine -->
+    <div v-if="semaine && semaine.cout_semaine !== null" class="bg-white rounded-2xl shadow px-5 py-3 flex items-center justify-between">
+      <span class="text-sm text-gray-600">Coût estimé des recettes de la semaine</span>
+      <span class="font-semibold text-emerald-700 text-base">~ {{ semaine.cout_semaine.toFixed(2) }} €</span>
+    </div>
+
     <!-- Bouton proposer une préférence -->
     <div class="text-right">
       <button

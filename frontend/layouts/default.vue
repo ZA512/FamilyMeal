@@ -8,6 +8,8 @@
           <span class="font-bold text-xl text-emerald-700">FamilyMeal</span>
         </div>
         <div class="flex items-center gap-3">
+          <NuxtLink to="/planning" class="text-sm text-gray-600 hover:text-emerald-700 font-medium">Planning</NuxtLink>
+          <NuxtLink to="/preferences" class="text-sm text-gray-600 hover:text-emerald-700 font-medium">Mes préférences</NuxtLink>
           <span v-if="membrePrenom" class="text-sm text-gray-600">
             Bonjour <strong>{{ membrePrenom }}</strong>
           </span>
