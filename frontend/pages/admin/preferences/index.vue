@@ -48,13 +48,13 @@
         </thead>
         <tbody>
           <tr
-            v-for="plat in platsFiltres"
-            :key="plat.id"
+            v-for="ligne in lignes"
+            :key="ligne.platId + '_' + (ligne.variantId ?? 'null')"
             class="border-b border-gray-100 hover:bg-gray-50"
           >
             <td class="px-4 py-2.5 sticky left-0 bg-white hover:bg-gray-50 font-medium text-gray-800">
-              {{ plat.nom }}
-              <span v-if="plat.statut === 'archive'" class="ml-1 text-xs text-gray-400">(archivé)</span>
+              {{ ligne.label }}
+              <span v-if="ligne.statut === 'archive'" class="ml-1 text-xs text-gray-400">(archivé)</span>
             </td>
             <td
               v-for="m in membres"
@@ -65,17 +65,17 @@
                 <button
                   v-for="opt in noteOpts"
                   :key="opt.value"
-                  @click="setNote(plat.id, m.id, opt.value)"
+                  @click="setNote(ligne.platId, ligne.variantId, m.id, opt.value)"
                   :title="opt.label"
                   class="px-1.5 py-0.5 rounded text-xs font-bold transition border"
-                  :class="getNote(plat.id, m.id) === opt.value
+                  :class="getNote(ligne.platId, ligne.variantId, m.id) === opt.value
                     ? opt.activeClass
                     : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400'"
                 >{{ opt.letter }}</button>
               </div>
             </td>
           </tr>
-          <tr v-if="platsFiltres.length === 0">
+          <tr v-if="lignes.length === 0">
             <td :colspan="membres.length + 1" class="text-center py-10 text-gray-400">
               Aucun plat trouvé.
             </td>
@@ -97,8 +97,9 @@ const filtreStatut = ref('actif')
 
 const plats = ref<any[]>([])
 const membres = ref<any[]>([])
-// prefs[plat_id][membre_id] = 'aime' | 'neutre' | 'deteste'
-const prefs = ref<Record<number, Record<number, string>>>({})
+// prefs[plat_id][variantKey][membre_id] = 'aime' | 'neutre' | 'deteste'
+// variantKey = String(ingredient_variant_id) ou 'null'
+const prefs = ref<Record<number, Record<string, Record<number, string>>>>({})
 
 const noteOpts = [
   { value: 'aime',    letter: 'A', label: 'Aime',    activeClass: 'bg-emerald-100 border-emerald-500 text-emerald-700' },
@@ -110,42 +111,65 @@ function normaliser(s: string) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 }
 
-const platsFiltres = computed(() => {
+type Ligne = { platId: number; variantId: number | null; label: string; statut: string }
+
+const lignes = computed((): Ligne[] => {
   let liste = plats.value
   if (filtreStatut.value) liste = liste.filter(p => p.statut === filtreStatut.value)
   if (recherche.value.trim()) {
     const q = normaliser(recherche.value.trim())
     liste = liste.filter(p => normaliser(p.nom).includes(q))
   }
-  return liste
+  const result: Ligne[] = []
+  for (const plat of liste) {
+    if (plat.variants && plat.variants.length > 0) {
+      for (const v of plat.variants) {
+        result.push({ platId: plat.id, variantId: v.id, label: `${plat.nom} (${v.nom_court})`, statut: plat.statut })
+      }
+    } else {
+      result.push({ platId: plat.id, variantId: null, label: plat.nom, statut: plat.statut })
+    }
+  }
+  return result
 })
 
-function getNote(platId: number, membreId: number): string {
-  return prefs.value[platId]?.[membreId] ?? 'neutre'
+function vk(variantId: number | null): string {
+  return variantId !== null ? String(variantId) : 'null'
+}
+
+function getNote(platId: number, variantId: number | null, membreId: number): string {
+  return prefs.value[platId]?.[vk(variantId)]?.[membreId] ?? 'neutre'
 }
 
 const saving = ref<Set<string>>(new Set())
 
-async function setNote(platId: number, membreId: number, note: string) {
-  const key = `${platId}_${membreId}`
+async function setNote(platId: number, variantId: number | null, membreId: number, note: string) {
+  const key = `${platId}_${vk(variantId)}_${membreId}`
   if (saving.value.has(key)) return
   saving.value.add(key)
 
   // Optimistic update
   if (!prefs.value[platId]) prefs.value[platId] = {}
-  prefs.value[platId][membreId] = note
+  if (!prefs.value[platId][vk(variantId)]) prefs.value[platId][vk(variantId)] = {}
+  prefs.value[platId][vk(variantId)][membreId] = note
 
   try {
-    await api.post('/preferences/set/', { membre: membreId, plat: platId, note })
+    const body: any = { membre: membreId, plat: platId, note }
+    if (variantId !== null) body.ingredient_variant = variantId
+    await api.post('/preferences/set/', body)
   } catch {
     // Rollback silencieux — on relance la donnée réelle
     const data: any = await api.get('/preferences/').catch(() => null)
-    if (data?.results || Array.isArray(data)) {
-      const list = Array.isArray(data) ? data : data.results
+    if (data) {
+      const list = Array.isArray(data) ? data : data.results ?? []
+      const map: Record<number, Record<string, Record<number, string>>> = {}
       list.forEach((p: any) => {
-        if (!prefs.value[p.plat]) prefs.value[p.plat] = {}
-        prefs.value[p.plat][p.membre] = p.note
+        if (!map[p.plat]) map[p.plat] = {}
+        const k = p.ingredient_variant ? String(p.ingredient_variant) : 'null'
+        if (!map[p.plat][k]) map[p.plat][k] = {}
+        map[p.plat][k][p.membre] = p.note
       })
+      prefs.value = map
     }
   } finally {
     saving.value.delete(key)
@@ -167,10 +191,12 @@ async function charger() {
       .filter((m: any) => m.actif)
 
     const prefsList = Array.isArray(prefsData) ? prefsData : prefsData.results ?? []
-    const map: Record<number, Record<number, string>> = {}
+    const map: Record<number, Record<string, Record<number, string>>> = {}
     prefsList.forEach((p: any) => {
       if (!map[p.plat]) map[p.plat] = {}
-      map[p.plat][p.membre] = p.note
+      const k = p.ingredient_variant ? String(p.ingredient_variant) : 'null'
+      if (!map[p.plat][k]) map[p.plat][k] = {}
+      map[p.plat][k][p.membre] = p.note
     })
     prefs.value = map
   } finally {

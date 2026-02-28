@@ -176,10 +176,17 @@ class PlatWriteSerializer(serializers.ModelSerializer):
 class PreferenceSerializer(serializers.ModelSerializer):
     membre_prenom = serializers.CharField(source='membre.prenom', read_only=True)
     plat_nom = serializers.CharField(source='plat.nom', read_only=True)
+    ingredient_variant_nom = serializers.SerializerMethodField()
 
     class Meta:
         model = Preference
-        fields = ['id', 'membre', 'membre_prenom', 'plat', 'plat_nom', 'note']
+        fields = ['id', 'membre', 'membre_prenom', 'plat', 'plat_nom',
+                  'ingredient_variant', 'ingredient_variant_nom', 'note']
+
+    def get_ingredient_variant_nom(self, obj):
+        if obj.ingredient_variant:
+            return obj.ingredient_variant.nom_court or obj.ingredient_variant.nom
+        return None
 
 
 class DemandeModificationSerializer(serializers.ModelSerializer):

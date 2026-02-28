@@ -171,13 +171,19 @@ class PlatIngredient(models.Model):
 class Preference(models.Model):
     membre = models.ForeignKey(Membre, on_delete=models.CASCADE, related_name='preferences')
     plat = models.ForeignKey(Plat, on_delete=models.CASCADE, related_name='preferences')
+    ingredient_variant = models.ForeignKey(
+        'Ingredient', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='preferences_variant',
+        help_text='Variant concerné (ex: Penne dans Bolognaise). Null = préférence générale du plat.',
+    )
     note = models.CharField(max_length=10, choices=NOTE_CHOICES, default='neutre')
 
     def __str__(self):
-        return f'{self.membre.prenom} — {self.plat.nom} : {self.note}'
+        variant = f' ({self.ingredient_variant.nom})' if self.ingredient_variant else ''
+        return f'{self.membre.prenom} — {self.plat.nom}{variant} : {self.note}'
 
     class Meta:
-        unique_together = ('membre', 'plat')
+        unique_together = ('membre', 'plat', 'ingredient_variant')
         verbose_name = 'Préférence'
 
 

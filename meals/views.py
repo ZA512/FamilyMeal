@@ -277,9 +277,12 @@ class PreferenceViewSet(viewsets.ModelViewSet):
         if note not in ('aime', 'neutre', 'deteste'):
             return Response({'detail': 'Note invalide (aime, neutre, deteste).'}, status=400)
 
+        ingredient_variant_id = request.data.get('ingredient_variant') or None
+
         pref, _ = Preference.objects.update_or_create(
             membre_id=membre_id,
             plat_id=plat_id,
+            ingredient_variant_id=ingredient_variant_id,
             defaults={'note': note},
         )
         return Response(PreferenceSerializer(pref).data)
