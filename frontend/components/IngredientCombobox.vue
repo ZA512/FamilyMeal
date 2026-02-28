@@ -5,8 +5,8 @@
       class="flex items-center gap-1 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus-within:ring-2 focus-within:ring-emerald-400 bg-white cursor-text"
       @click="ouvrirEtFocuser"
     >
-      <span v-if="selected" class="flex items-center gap-1 bg-emerald-100 text-emerald-800 rounded px-1.5 py-0.5 text-xs whitespace-nowrap">
-        {{ selected.nom }}
+      <span v-if="selected" :title="selected.nom" class="flex items-center gap-1 bg-emerald-100 text-emerald-800 rounded px-1.5 py-0.5 text-xs min-w-0">
+        <span class="truncate max-w-[180px]">{{ selected.nom }}</span>
         <button type="button" @click.stop="effacer" class="text-emerald-500 hover:text-emerald-700 leading-none">✕</button>
       </span>
       <input

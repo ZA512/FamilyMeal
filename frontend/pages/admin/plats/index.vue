@@ -135,29 +135,24 @@
           <div>
             <label class="label">Ingrédients du plat</label>
             <p class="text-xs text-gray-400 mb-2">Cochez <strong>⇅ Variant</strong> pour les ingrédients interchangeables (ex : Penne / Farfalle / Macaroni). Le planning choisira automatiquement par rotation.</p>
-            <div class="space-y-2">
-              <div v-for="(pi, idx) in form.plat_ingredients" :key="idx"
+            <div class="space-y-1.5">
+              <div v-for="pi in ingredientsSorted" :key="pi._idx"
                 :class="pi.est_variant ? 'bg-violet-50 border-violet-300' : 'bg-gray-50 border-gray-200'"
-                class="flex flex-col gap-1 border rounded-lg p-2">
-                <div class="flex items-center gap-2">
-                  <IngredientCombobox
-                    v-model="pi.ingredient"
-                    :ingredients="ingredients"
-                    placeholder="Rechercher un ingrédient…"
-                    class="flex-1"
-                  />
-                  <label class="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap" :class="pi.est_variant ? 'text-violet-700 font-medium' : 'text-gray-500'">
-                    <input type="checkbox" v-model="pi.est_variant" class="rounded accent-violet-600" />
-                    ⇅ Variant
-                  </label>
-                </div>
-                <div class="flex gap-2 items-center">
-                  <input v-model.number="pi.quantite_par_portion" type="number" step="0.01" placeholder="Qté" class="input w-24 text-xs" />
-                  <input v-model="pi.unite" placeholder="unité" class="input w-24 text-xs" />
-                  <button @click="form.plat_ingredients.splice(idx, 1)" class="ml-auto text-red-400 hover:text-red-600 text-sm leading-none px-1">✕</button>
-                </div>
+                class="flex items-center gap-2 border rounded-lg px-2 py-1.5">
+                <input v-model.number="form.plat_ingredients[pi._idx].quantite_par_portion" type="number" step="0.01" min="0" class="w-12 shrink-0 border border-gray-300 rounded-lg px-1 py-1.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+                <IngredientCombobox
+                  v-model="form.plat_ingredients[pi._idx].ingredient"
+                  :ingredients="ingredients"
+                  placeholder="Ingrédient…"
+                  class="flex-1 min-w-0"
+                />
+                <label class="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap w-20 shrink-0 justify-end" :class="pi.est_variant ? 'text-violet-700 font-medium' : 'text-gray-500'">
+                  <input type="checkbox" v-model="form.plat_ingredients[pi._idx].est_variant" class="rounded accent-violet-600" />
+                  ⇅ Variant
+                </label>
+                <button @click="form.plat_ingredients.splice(pi._idx, 1)" class="text-red-400 hover:text-red-600 text-sm leading-none px-1 shrink-0">✕</button>
               </div>
-              <button @click="form.plat_ingredients.push({ ingredient: null, quantite_par_portion: null, unite: '', notes: '', est_variant: false })"
+              <button @click="form.plat_ingredients.push({ ingredient: null, quantite_par_portion: 1, unite: '', notes: '', est_variant: false })"
                 class="text-xs text-emerald-600 hover:underline">+ Ajouter un ingrédient</button>
             </div>
           </div>
@@ -223,15 +218,37 @@ const platsFiltres = computed(() => {
 const coutFormulaire = computed<number | null>(() => {
   let total = 0
   let hasAny = false
-  for (const pi of form.plat_ingredients) {
+  const nonVariants = form.plat_ingredients.filter(pi => !pi.est_variant)
+  const variants = form.plat_ingredients.filter(pi => pi.est_variant)
+  for (const pi of nonVariants) {
     const ing = ingredients.value.find(i => i.id === pi.ingredient)
     if (ing && ing.prix !== null && pi.quantite_par_portion) {
       total += Number(ing.prix) * pi.quantite_par_portion
       hasAny = true
     }
   }
+  if (variants.length > 0) {
+    const variantCosts = variants
+      .map(pi => {
+        const ing = ingredients.value.find(i => i.id === pi.ingredient)
+        return (ing && ing.prix !== null && pi.quantite_par_portion)
+          ? Number(ing.prix) * pi.quantite_par_portion
+          : null
+      })
+      .filter(c => c !== null) as number[]
+    if (variantCosts.length > 0) {
+      total += variantCosts.reduce((a, b) => a + b, 0) / variantCosts.length
+      hasAny = true
+    }
+  }
   return hasAny ? Math.round(total * 100) / 100 : null
 })
+
+const ingredientsSorted = computed(() =>
+  form.plat_ingredients
+    .map((pi, idx) => ({ ...pi, _idx: idx }))
+    .sort((a, b) => Number(a.est_variant) - Number(b.est_variant))
+)
 
 function statutClass(s: string) {
   if (s === 'actif') return 'bg-emerald-100 text-emerald-700'
