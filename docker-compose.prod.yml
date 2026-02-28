@@ -1,13 +1,12 @@
 # docker-compose.prod.yml — utilise les images pré-compilées depuis ghcr.io
 # Usage sur Unraid : copier ce fichier + créer un .env, puis "docker compose -f docker-compose.prod.yml up -d"
 #
-# Variables à définir dans .env :
+# Variables à définir dans .env (même dossier que ce fichier) :
 #   POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
 #   SECRET_KEY          (clé Django, garder secrète)
-#   ALLOWED_HOSTS       (ex: monserveur.local,192.168.1.10)
+#   ALLOWED_HOSTS       (ex: 192.168.1.10,monserveur.local) — laisser vide = accepte tout
 #   DEBUG               (laisser False en prod)
-
-version: '3.9'
+#   HTTP_PORT           (port nginx, défaut: 80)
 
 services:
 
@@ -31,6 +30,8 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    sysctls:
+      net.core.somaxconn: 511
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -53,9 +54,7 @@ services:
       REDIS_URL:     redis://redis:6379/0
       SECRET_KEY:    ${SECRET_KEY:-changeme-set-a-real-secret-in-dot-env}
       DEBUG:         ${DEBUG:-False}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
-    env_file:
-      - .env
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
 
   celery:
     image: ghcr.io/za512/familymeal-backend:latest
@@ -73,8 +72,6 @@ services:
       REDIS_URL:     redis://redis:6379/0
       SECRET_KEY:    ${SECRET_KEY:-changeme-set-a-real-secret-in-dot-env}
       DEBUG:         ${DEBUG:-False}
-    env_file:
-      - .env
 
   frontend:
     image: ghcr.io/za512/familymeal-frontend:latest
