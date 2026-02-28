@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "@vite-pwa/nuxt": "^1.1.1"
+  }
+}

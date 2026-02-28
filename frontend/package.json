@@ -11,11 +11,12 @@
   },
   "devDependencies": {
     "@nuxtjs/tailwindcss": "^6.12.2",
+    "@vite-pwa/nuxt": "^1.1.1",
     "nuxt": "^3.13.0"
   },
   "dependencies": {
     "@pinia/nuxt": "^0.7.0",
-    "pinia": "^2.2.4",
-    "dayjs": "^1.11.13"
+    "dayjs": "^1.11.13",
+    "pinia": "^2.2.4"
   }
 }

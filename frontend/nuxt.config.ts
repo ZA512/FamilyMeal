@@ -6,6 +6,7 @@ export default defineNuxtConfig({
   modules: [
     '@nuxtjs/tailwindcss',
     '@pinia/nuxt',
+    '@vite-pwa/nuxt',
   ],
 
   runtimeConfig: {
@@ -30,6 +31,40 @@ export default defineNuxtConfig({
   },
 
   ssr: false,
+
+  pwa: {
+    registerType: 'autoUpdate',
+    manifest: {
+      name: 'FamilyMeal',
+      short_name: 'FamilyMeal',
+      description: 'Planning repas familial',
+      theme_color: '#10b981',
+      background_color: '#ffffff',
+      display: 'standalone',
+      start_url: '/',
+      icons: [
+        {
+          src: '/icons/pwa-192.png',
+          sizes: '192x192',
+          type: 'image/png',
+        },
+        {
+          src: '/icons/pwa-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any maskable',
+        },
+      ],
+    },
+    workbox: {
+      navigateFallback: '/',
+      globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
+    },
+    devOptions: {
+      enabled: true,
+      type: 'module',
+    },
+  },
 
   vite: {
     optimizeDeps: {

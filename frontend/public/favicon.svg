@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Fond arrondi vert émeraude -->
+  <rect width="512" height="512" rx="100" ry="100" fill="#10b981"/>
+  <!-- Assiette -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="white" stroke-width="18"/>
+  <circle cx="256" cy="256" r="90" fill="none" stroke="white" stroke-width="10" opacity="0.5"/>
+  <!-- Fourchette (gauche) -->
+  <line x1="190" y1="140" x2="190" y2="370" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  <line x1="170" y1="140" x2="170" y2="210" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  <line x1="210" y1="140" x2="210" y2="210" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  <path d="M170 210 Q190 230 210 210" fill="none" stroke="white" stroke-width="10" stroke-linecap="round"/>
+  <!-- Couteau (droite) -->
+  <line x1="322" y1="140" x2="322" y2="370" stroke="white" stroke-width="14" stroke-linecap="round"/>
+  <path d="M322 140 Q355 170 340 230 Q330 250 322 260" fill="white" opacity="0.9"/>
+</svg>
