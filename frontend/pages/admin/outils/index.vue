@@ -157,6 +157,58 @@
         </button>
       </div>
     </div>
+
+    <!-- ─── Section Backup / Restauration ──────────────────────────────── -->
+    <div class="bg-white rounded-2xl shadow p-6 space-y-5">
+      <h2 class="text-lg font-semibold text-gray-700">💾 Backup &amp; Restauration</h2>
+      <p class="text-sm text-gray-500">
+        Sauvegarde et restauration de toutes les données applicatives (plats, ingrédients, membres, planning…).
+        Fonctionne avec SQLite et PostgreSQL. Le fichier produit est un JSON gzippé.
+      </p>
+
+      <div class="grid sm:grid-cols-2 gap-6">
+        <!-- Télécharger un backup -->
+        <div class="rounded-xl border border-gray-200 p-5 space-y-3">
+          <h3 class="font-semibold text-gray-700 text-sm">📤 Télécharger un backup</h3>
+          <p class="text-xs text-gray-500">Génère un instantané complet et le télécharge dans votre navigateur.</p>
+          <button
+            @click="telechargerBackup"
+            :disabled="backupLoading"
+            class="w-full bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {{ backupLoading ? 'Génération…' : 'Télécharger le backup' }}
+          </button>
+          <p v-if="backupErreur" class="text-xs text-red-600">{{ backupErreur }}</p>
+        </div>
+
+        <!-- Restaurer depuis un fichier -->
+        <div class="rounded-xl border border-gray-200 p-5 space-y-3">
+          <h3 class="font-semibold text-gray-700 text-sm">📥 Restaurer depuis un fichier</h3>
+          <p class="text-xs text-orange-600 font-medium">⚠️ Écrase les données existantes correspondantes.</p>
+          <label
+            class="flex flex-col items-center justify-center w-full border-2 border-dashed rounded-xl p-4 cursor-pointer transition-colors"
+            :class="restoreFile ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 hover:border-emerald-400'"
+            @dragover.prevent
+            @drop.prevent="onRestoreDrop"
+          >
+            <span class="text-2xl mb-1">{{ restoreFile ? '✅' : '📂' }}</span>
+            <span class="text-xs text-gray-500 text-center">
+              {{ restoreFile ? restoreFile.name : 'Glissez un fichier .json ou .json.gz ici' }}
+            </span>
+            <input type="file" accept=".json,.gz" class="hidden" @change="onRestoreFileChange" />
+          </label>
+          <button
+            @click="restaurer"
+            :disabled="!restoreFile || restoreLoading"
+            class="w-full bg-orange-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-orange-600 disabled:opacity-50"
+          >
+            {{ restoreLoading ? 'Restauration…' : 'Restaurer' }}
+          </button>
+          <p v-if="restoreErreur" class="text-xs text-red-600">{{ restoreErreur }}</p>
+          <p v-if="restoreOk" class="text-xs text-emerald-600 font-medium">✓ Restauration effectuée avec succès.</p>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -280,6 +332,82 @@ async function importer() {
     erreur.value = (e as Error).message
   } finally {
     importing.value = false
+  }
+}
+
+// ── Backup / Restauration ──────────────────────────────────────────
+const backupLoading = ref(false)
+const backupErreur = ref('')
+const restoreFile = ref<File | null>(null)
+const restoreLoading = ref(false)
+const restoreErreur = ref('')
+const restoreOk = ref(false)
+
+async function telechargerBackup() {
+  backupLoading.value = true
+  backupErreur.value = ''
+  try {
+    const res = await fetch(`${config.public.apiBase}/tools/backup/`, {
+      method: 'GET',
+      headers: { ...auth.authHeader },
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `Erreur ${res.status}`)
+    }
+    const blob = await res.blob()
+    const disposition = res.headers.get('Content-Disposition') || ''
+    const match = disposition.match(/filename="([^"]+)"/)
+    const filename = match?.[1] || 'familymeal_backup.json.gz'
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: unknown) {
+    backupErreur.value = (e as Error).message
+  } finally {
+    backupLoading.value = false
+  }
+}
+
+function onRestoreFileChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0] ?? null
+  restoreFile.value = file
+  restoreOk.value = false
+  restoreErreur.value = ''
+}
+
+function onRestoreDrop(e: DragEvent) {
+  const file = e.dataTransfer?.files?.[0] ?? null
+  restoreFile.value = file
+  restoreOk.value = false
+  restoreErreur.value = ''
+}
+
+async function restaurer() {
+  if (!restoreFile.value) return
+  if (!confirm('Confirmer la restauration ? Les données existantes seront écrasées.')) return
+  restoreLoading.value = true
+  restoreErreur.value = ''
+  restoreOk.value = false
+  const formData = new FormData()
+  formData.append('file', restoreFile.value)
+  try {
+    const res = await fetch(`${config.public.apiBase}/tools/restore/`, {
+      method: 'POST',
+      headers: { ...auth.authHeader },
+      body: formData,
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.detail || `Erreur ${res.status}`)
+    restoreOk.value = true
+    restoreFile.value = null
+  } catch (e: unknown) {
+    restoreErreur.value = (e as Error).message
+  } finally {
+    restoreLoading.value = false
   }
 }
 

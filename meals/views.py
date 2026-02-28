@@ -1,15 +1,21 @@
 import jwt
 import json
+import gzip
+import io
+import os
+import tempfile
 from datetime import timedelta
 
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, permission_classes, action, parser_classes
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from django.conf import settings
+from django.http import HttpResponse
+from django.core.management import call_command
 
 from .auth import IsAdminUser, IsReaderOrAdmin
 from .models import (
@@ -717,3 +723,86 @@ def import_ingredients(request):
         'skipped': len(skipped_names),
         'created_names': created_names,
     })
+
+
+# ─────────────────────────────────────────
+# Backup / Restauration
+# ─────────────────────────────────────────
+
+# Applications incluses dans le backup (exclut auth, sessions, contenttypes, etc.)
+_BACKUP_APPS = [
+    'meals',
+    'django_celery_beat',
+]
+
+@api_view(['GET'])
+@permission_classes([IsAdminUser])
+def backup_download(request):
+    """
+    Génère un dump JSON compressé (gzip) de toutes les données applicatives.
+    Fonctionne avec SQLite et PostgreSQL.
+    """
+    buf = io.StringIO()
+    call_command(
+        'dumpdata',
+        *_BACKUP_APPS,
+        format='json',
+        indent=2,
+        natural_foreign=True,
+        natural_primary=True,
+        stdout=buf,
+    )
+    json_bytes = buf.getvalue().encode('utf-8')
+
+    gz_buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=gz_buf, mode='wb') as gz:
+        gz.write(json_bytes)
+    gz_buf.seek(0)
+
+    from django.utils import timezone as tz
+    filename = f"familymeal_backup_{tz.now().strftime('%Y%m%d_%H%M%S')}.json.gz"
+
+    response = HttpResponse(gz_buf.read(), content_type='application/gzip')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminUser])
+@parser_classes([MultiPartParser])
+def backup_restore(request):
+    """
+    Restaure un dump JSON (compressé gzip ou brut) via loaddata.
+    Fonctionne avec SQLite et PostgreSQL.
+    """
+    uploaded = request.FILES.get('file')
+    if not uploaded:
+        return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+
+    # Lire et décompresser si nécessaire
+    raw = uploaded.read()
+    if uploaded.name.endswith('.gz') or raw[:2] == b'\x1f\x8b':
+        try:
+            raw = gzip.decompress(raw)
+        except Exception:
+            return Response({'detail': 'Impossible de décompresser le fichier.'}, status=400)
+
+    # Valider JSON
+    try:
+        json.loads(raw.decode('utf-8'))
+    except Exception:
+        return Response({'detail': 'Le fichier n\'est pas un JSON valide.'}, status=400)
+
+    # Écrire dans un fichier temporaire pour loaddata
+    with tempfile.NamedTemporaryFile(suffix='.json', delete=False, mode='wb') as tmp:
+        tmp.write(raw)
+        tmp_path = tmp.name
+
+    try:
+        call_command('loaddata', tmp_path, verbosity=0)
+    except Exception as e:
+        return Response({'detail': f'Erreur lors de la restauration : {e}'}, status=500)
+    finally:
+        os.unlink(tmp_path)
+
+    return Response({'status': 'Restauration effectuée avec succès.'})

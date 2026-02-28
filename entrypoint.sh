@@ -46,4 +46,7 @@ for nom, ordre in defaults:
 print('  Config & catégories initialisées.')
 "
 
-exec "\$@"
+echo "==> Collecting static files..."
+python manage.py collectstatic --noinput
+
+exec "$@"

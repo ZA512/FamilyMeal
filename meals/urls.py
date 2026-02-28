@@ -22,5 +22,7 @@ urlpatterns = [
     path('tools/parse-har/', views.parse_har, name='parse-har'),
     path('tools/scrape-coursesu/', views.scrape_coursesu, name='scrape-coursesu'),
     path('tools/import-ingredients/', views.import_ingredients, name='import-ingredients'),
+    path('tools/backup/', views.backup_download, name='backup-download'),
+    path('tools/restore/', views.backup_restore, name='backup-restore'),
     path('', include(router.urls)),
 ]
