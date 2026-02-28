@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          dockerfile: Dockerfile
+          file: Dockerfile
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/familymeal-backend:latest
@@ -48,7 +48,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          dockerfile: ./frontend/Dockerfile
+          file: ./frontend/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/familymeal-frontend:latest
@@ -63,7 +63,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./nginx
-          dockerfile: ./nginx/Dockerfile
+          file: ./nginx/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ env.OWNER }}/familymeal-nginx:latest
