@@ -17,6 +17,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set lowercase owner
+        run: echo "OWNER=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -35,8 +38,8 @@ jobs:
           dockerfile: Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/familymeal-backend:latest
-            ghcr.io/${{ github.repository_owner }}/familymeal-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/familymeal-backend:latest
+            ghcr.io/${{ env.OWNER }}/familymeal-backend:${{ github.sha }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
 
@@ -48,8 +51,8 @@ jobs:
           dockerfile: ./frontend/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/familymeal-frontend:latest
-            ghcr.io/${{ github.repository_owner }}/familymeal-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/familymeal-frontend:latest
+            ghcr.io/${{ env.OWNER }}/familymeal-frontend:${{ github.sha }}
           build-args: |
             NUXT_PUBLIC_API_BASE=/api
           cache-from: type=gha,scope=frontend
@@ -63,7 +66,7 @@ jobs:
           dockerfile: ./nginx/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/familymeal-nginx:latest
-            ghcr.io/${{ github.repository_owner }}/familymeal-nginx:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/familymeal-nginx:latest
+            ghcr.io/${{ env.OWNER }}/familymeal-nginx:${{ github.sha }}
           cache-from: type=gha,scope=nginx
           cache-to: type=gha,scope=nginx,mode=max
