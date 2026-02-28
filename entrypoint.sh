@@ -22,11 +22,15 @@ python manage.py migrate --noinput
 
 echo "==> Creating default superuser if needed..."
 python manage.py shell -c "
+import os
 from django.contrib.auth import get_user_model
 User = get_user_model()
-if not User.objects.filter(username='admin').exists():
-    User.objects.create_superuser('admin', 'admin@familymeal.local', 'Admin1234!')
-    print('  Superuser created: admin / Admin1234!')
+username = os.environ.get('DJANGO_SUPERUSER_USERNAME', 'admin')
+password = os.environ.get('DJANGO_SUPERUSER_PASSWORD', 'Admin1234!')
+email    = os.environ.get('DJANGO_SUPERUSER_EMAIL', 'admin@familymeal.local')
+if not User.objects.filter(username=username).exists():
+    User.objects.create_superuser(username, email, password)
+    print(f'  Superuser created: {username}')
 else:
     print('  Superuser already exists.')
 "

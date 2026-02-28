@@ -6,7 +6,10 @@
 #   SECRET_KEY          (clé Django, garder secrète)
 #   ALLOWED_HOSTS       (ex: 192.168.1.10,monserveur.local) — laisser vide = accepte tout
 #   DEBUG               (laisser False en prod)
-#   HTTP_PORT           (port nginx, défaut: 80)
+#   HTTP_PORT                    (port nginx, défaut: 80)
+#   DJANGO_SUPERUSER_USERNAME    (défaut: admin)
+#   DJANGO_SUPERUSER_PASSWORD    (défaut: Admin1234!)
+#   DJANGO_SUPERUSER_EMAIL       (défaut: admin@familymeal.local)
 
 services:
 
@@ -55,6 +58,9 @@ services:
       SECRET_KEY:    ${SECRET_KEY:-changeme-set-a-real-secret-in-dot-env}
       DEBUG:         ${DEBUG:-False}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-*}
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-Admin1234!}
+      DJANGO_SUPERUSER_EMAIL:    ${DJANGO_SUPERUSER_EMAIL:-admin@familymeal.local}
 
   celery:
     image: ghcr.io/za512/familymeal-backend:latest
