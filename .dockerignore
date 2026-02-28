@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+.eggs/
+
+# Environnements virtuels
+.venv/
+venv/
+ENV/
+
+# Django runtime
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+*.log
+local_settings.py
+
+# Variables d'environnement — ne jamais inclure dans l'image
+.env
+.env.*
+
+# Frontend (géré dans son propre contexte de build)
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+frontend/.nitro/
+
+# Tests et CI
+.github/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Éditeurs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# HAR files (peuvent contenir des cookies/tokens)
+*.har
+
+# Git
+.git/
+.gitignore

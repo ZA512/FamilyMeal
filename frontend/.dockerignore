@@ -1,0 +1,7 @@
+# .dockerignore for the frontend build context
+node_modules/
+.nuxt/
+.output/
+.nitro/
+*.log
+.DS_Store
