@@ -23,13 +23,12 @@ class CategorieIngredientSerializer(serializers.ModelSerializer):
 class IngredientSerializer(serializers.ModelSerializer):
     categorie_nom = serializers.CharField(source='categorie.nom', read_only=True)
     dernier_achat = serializers.SerializerMethodField()
-
     en_plat = serializers.SerializerMethodField()
 
     class Meta:
         model = Ingredient
         fields = [
-            'id', 'nom', 'categorie', 'categorie_nom', 'unite', 'url_produit',
+            'id', 'nom', 'nom_court', 'categorie', 'categorie_nom', 'unite', 'url_produit',
             'image_url', 'prix', 'achat_systematique', 'en_plat', 'dernier_achat',
         ]
 
@@ -63,16 +62,17 @@ class PlatIngredientSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlatIngredient
         fields = ['id', 'ingredient', 'ingredient_nom', 'ingredient_unite', 'ingredient_prix',
-                  'quantite_par_portion', 'unite', 'notes']
+                  'quantite_par_portion', 'unite', 'notes', 'est_variant']
 
 
 class PlatListSerializer(serializers.ModelSerializer):
     """Serializer léger pour les listes."""
     cout_estime = serializers.SerializerMethodField()
+    variants = serializers.SerializerMethodField()
 
     class Meta:
         model = Plat
-        fields = ['id', 'nom', 'temps_preparation', 'ingredient_principal',
+        fields = ['id', 'nom', 'variants', 'temps_preparation', 'ingredient_principal',
                   'est_secours', 'est_obligatoire', 'statut', 'photo', 'cout_estime']
 
     def get_cout_estime(self, obj):
@@ -83,6 +83,13 @@ class PlatListSerializer(serializers.ModelSerializer):
                 total += float(pi.ingredient.prix) * pi.quantite_par_portion
                 has_any = True
         return round(total, 2) if has_any else None
+
+    def get_variants(self, obj):
+        """Liste des ingrédients variants avec id et nom court."""
+        return [
+            {'id': pi.ingredient_id, 'nom_court': pi.ingredient.nom_court or pi.ingredient.nom}
+            for pi in obj.plat_ingredients.select_related('ingredient').filter(est_variant=True)
+        ]
 
 
 class PlatDetailSerializer(serializers.ModelSerializer):
@@ -191,10 +198,16 @@ class DemandeModificationSerializer(serializers.ModelSerializer):
 
 class HistoriquePlatSerializer(serializers.ModelSerializer):
     plat_nom = serializers.CharField(source='plat.nom', read_only=True)
+    variant_nom_court = serializers.SerializerMethodField()
 
     class Meta:
         model = HistoriquePlat
-        fields = ['id', 'plat', 'plat_nom', 'date', 'notes']
+        fields = ['id', 'plat', 'plat_nom', 'date', 'notes', 'variant_choisi', 'variant_nom_court']
+
+    def get_variant_nom_court(self, obj):
+        if obj.variant_choisi:
+            return obj.variant_choisi.nom_court or obj.variant_choisi.nom
+        return None
 
 
 class CreneauActifSerializer(serializers.ModelSerializer):
@@ -247,19 +260,27 @@ class CreneauPlanningSerializer(serializers.ModelSerializer):
     plat_secours_detail = PlatListSerializer(source='plat_secours', read_only=True)
     membres_secours_detail = MembreSerializer(source='membres_secours', many=True, read_only=True)
     jour_semaine = serializers.SerializerMethodField()
+    variant_choisi_nom_court = serializers.SerializerMethodField()
 
     class Meta:
         model = CreneauPlanning
         fields = [
-            'id', 'date', 'creneau', 'jour_semaine',
+            'id', 'semaine', 'date', 'creneau', 'jour_semaine',
             'plat_principal', 'plat_principal_detail',
             'plat_secours', 'plat_secours_detail',
-            'membres_secours', 'membres_secours_detail', 'notes',
+            'membres_secours', 'membres_secours_detail',
+            'variant_choisi', 'variant_choisi_nom_court',
+            'notes',
         ]
 
     def get_jour_semaine(self, obj):
         JOURS_FR = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
         return JOURS_FR[obj.date.weekday()]
+
+    def get_variant_choisi_nom_court(self, obj):
+        if obj.variant_choisi:
+            return obj.variant_choisi.nom_court or obj.variant_choisi.nom
+        return None
 
 
 class SemaineMenuSerializer(serializers.ModelSerializer):

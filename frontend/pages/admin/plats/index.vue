@@ -35,7 +35,10 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
                 <img v-if="plat.photo" :src="plat.photo" alt="" class="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
-                <span class="font-medium text-sm text-gray-800">{{ plat.nom }}</span>
+                <div>
+                  <span class="font-medium text-sm text-gray-800">{{ plat.nom }}</span>
+                  <span v-if="plat.variants?.length" class="ml-2 px-1.5 py-0.5 rounded text-xs bg-violet-100 text-violet-700">⇅ {{ plat.variants.length }} variant{{ plat.variants.length > 1 ? 's' : '' }}</span>
+                </div>
               </div>
             </td>
             <td class="px-4 py-3 hidden md:table-cell">
@@ -131,21 +134,30 @@
           <!-- Ingrédients du plat -->
           <div>
             <label class="label">Ingrédients du plat</label>
+            <p class="text-xs text-gray-400 mb-2">Cochez <strong>⇅ Variant</strong> pour les ingrédients interchangeables (ex : Penne / Farfalle / Macaroni). Le planning choisira automatiquement par rotation.</p>
             <div class="space-y-2">
-              <div v-for="(pi, idx) in form.plat_ingredients" :key="idx" class="flex flex-col gap-1 bg-gray-50 border border-gray-200 rounded-lg p-2">
-                <IngredientCombobox
-                  v-model="pi.ingredient"
-                  :ingredients="ingredients"
-                  placeholder="Rechercher un ingrédient…"
-                  class="w-full"
-                />
+              <div v-for="(pi, idx) in form.plat_ingredients" :key="idx"
+                :class="pi.est_variant ? 'bg-violet-50 border-violet-300' : 'bg-gray-50 border-gray-200'"
+                class="flex flex-col gap-1 border rounded-lg p-2">
+                <div class="flex items-center gap-2">
+                  <IngredientCombobox
+                    v-model="pi.ingredient"
+                    :ingredients="ingredients"
+                    placeholder="Rechercher un ingrédient…"
+                    class="flex-1"
+                  />
+                  <label class="flex items-center gap-1 text-xs cursor-pointer whitespace-nowrap" :class="pi.est_variant ? 'text-violet-700 font-medium' : 'text-gray-500'">
+                    <input type="checkbox" v-model="pi.est_variant" class="rounded accent-violet-600" />
+                    ⇅ Variant
+                  </label>
+                </div>
                 <div class="flex gap-2 items-center">
                   <input v-model.number="pi.quantite_par_portion" type="number" step="0.01" placeholder="Qté" class="input w-24 text-xs" />
                   <input v-model="pi.unite" placeholder="unité" class="input w-24 text-xs" />
                   <button @click="form.plat_ingredients.splice(idx, 1)" class="ml-auto text-red-400 hover:text-red-600 text-sm leading-none px-1">✕</button>
                 </div>
               </div>
-              <button @click="form.plat_ingredients.push({ ingredient: null, quantite_par_portion: null, unite: '', notes: '' })"
+              <button @click="form.plat_ingredients.push({ ingredient: null, quantite_par_portion: null, unite: '', notes: '', est_variant: false })"
                 class="text-xs text-emerald-600 hover:underline">+ Ajouter un ingrédient</button>
             </div>
           </div>
@@ -242,6 +254,7 @@ async function ouvrirEdition(plat: any) {
     quantite_par_portion: pi.quantite_par_portion,
     unite: pi.unite,
     notes: pi.notes || '',
+    est_variant: pi.est_variant || false,
   }))
   Object.assign(form, {
     nom: data.nom, description: data.description || '',
@@ -290,11 +303,13 @@ async function dupliquerPlat(plat: any) {
     quantite_par_portion: pi.quantite_par_portion,
     unite: pi.unite,
     notes: pi.notes || '',
+    est_variant: pi.est_variant || false,
   }))
   Object.assign(form, {
     nom: `${plat.nom} (copie)`, description: data.description || '',
     statut: data.statut, temps_preparation: data.temps_preparation,
     est_secours: data.est_secours, est_obligatoire: data.est_obligatoire,
+    famille: data.famille ?? null,
     saison_debut: data.saison_debut || '', saison_fin: data.saison_fin || '',
     disponibilites: dispos, plat_ingredients: pis,
   })
@@ -310,7 +325,10 @@ async function supprimerPlat(plat: any) {
 async function charger() {
   loading.value = true
   try {
-    const [platsData, ingsData] = await Promise.all([api.get<any>('/plats/'), api.get<any>('/ingredients/')])
+    const [platsData, ingsData] = await Promise.all([
+      api.get<any>('/plats/'),
+      api.get<any>('/ingredients/'),
+    ])
     plats.value = Array.isArray(platsData) ? platsData : (platsData.results ?? [])
     ingredients.value = Array.isArray(ingsData) ? ingsData : (ingsData.results ?? [])
   } finally {

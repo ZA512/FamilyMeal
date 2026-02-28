@@ -57,7 +57,7 @@
                 :creneau="getCreneauPlanning(jour.date, creneau)"
                 :plats="plats"
                 :membres="membres"
-                @update="(platId: number | null) => updateCreneau(jour.date, creneau, platId)"
+                @update="(platId: number | null, variantId: number | null) => updateCreneau(jour.date, creneau, platId, variantId)"
               />
             </td>
           </tr>
@@ -102,20 +102,25 @@ const semaineId = ref<any>('')
 const semaine = ref<any>(null)
 const plats = ref<any[]>([])
 const membres = ref<any[]>([])
+const config = ref<any>(null)
 const loadingGrid = ref(false)
 const creating = ref(false)
 const actionLoading = ref(false)
 const candidats = ref<any[]>([])
 const candidatSlot = ref<{ date: string; creneau: string } | null>(null)
 
-const JOURS_COURTS = ['Lun','Mar','Mer','Jeu','Ven','Sam','Dim']
+// dayjs .day() : 0=Dim, 1=Lun, 2=Mar, 3=Mer, 4=Jeu, 5=Ven, 6=Sam
+const JOURS_COURTS: Record<number, string> = { 0: 'Dim', 1: 'Lun', 2: 'Mar', 3: 'Mer', 4: 'Jeu', 5: 'Ven', 6: 'Sam' }
+const JOUR_TO_DAY: Record<string, number> = {
+  dimanche: 0, lundi: 1, mardi: 2, mercredi: 3, jeudi: 4, vendredi: 5, samedi: 6,
+}
 
 const jours = computed(() => {
   if (!semaine.value) return []
   const debut = dayjs(semaine.value.date_debut)
   return Array.from({ length: 7 }, (_, i) => {
     const d = debut.add(i, 'day')
-    return { date: d.format('YYYY-MM-DD'), nomCourt: JOURS_COURTS[i], numero: d.format('D') }
+    return { date: d.format('YYYY-MM-DD'), nomCourt: JOURS_COURTS[d.day()], numero: d.format('D') }
   })
 })
 
@@ -144,9 +149,12 @@ async function chargerSemaine() {
 async function creerSemaine() {
   creating.value = true
   try {
-    // Date of next Monday
-    const lundi = dayjs().startOf('week').add(1, 'week').day(1)
-    const s = await api.post('/semaines/', { date_debut: lundi.format('YYYY-MM-DD') })
+    // Date of next occurrence of the configured start day (at least 1 day from today)
+    const jourNum = JOUR_TO_DAY[config.value?.jour_debut_semaine ?? 'lundi'] ?? 1
+    const todayDay = dayjs().day()
+    const daysUntil = ((jourNum - todayDay + 7) % 7) || 7
+    const debut = dayjs().add(daysUntil, 'day')
+    const s = await api.post('/semaines/', { date_debut: debut.format('YYYY-MM-DD') })
     await chargerSemaines()
     semaineId.value = s.id
     await chargerSemaine()
@@ -188,13 +196,13 @@ async function depublier() {
   }
 }
 
-async function updateCreneau(date: string, creneauType: string, platId: number | null) {
+async function updateCreneau(date: string, creneauType: string, platId: number | null, variantId: number | null = null) {
   const existing = getCreneauPlanning(date, creneauType)
   try {
     if (existing) {
-      await api.patch(`/creneaux/${existing.id}/`, { plat_principal: platId })
+      await api.patch(`/creneaux/${existing.id}/`, { plat_principal: platId, variant_choisi: variantId })
     } else {
-      await api.post('/creneaux/', { semaine: semaineId.value, date, creneau: creneauType, plat_principal: platId })
+      await api.post('/creneaux/', { semaine: semaineId.value, date, creneau: creneauType, plat_principal: platId, variant_choisi: variantId })
     }
     await chargerSemaine()
   } catch {
@@ -221,42 +229,104 @@ const CellPlanning = defineComponent({
   props: { creneau: Object, plats: Array, membres: Array },
   emits: ['update'],
   setup(props, { emit }) {
+    const api = useApi()
     const editing = ref(false)
     const selected = ref<number | null>(null)
+    const selectedVariant = ref<number | null>(null)
 
     watchEffect(() => {
-      selected.value = props.creneau?.plat_principal?.id || null
+      // plat_principal est un entier (PK), pas un objet
+      selected.value = props.creneau?.plat_principal || null
+      selectedVariant.value = props.creneau?.variant_choisi || null
     })
 
+    const platSelectionne = computed(() =>
+      (props.plats as any[] || []).find((p: any) => p.id === selected.value) || null
+    )
+
+    async function onPlatChange(e: Event) {
+      const platId = Number((e.target as HTMLSelectElement).value) || null
+      selected.value = platId
+      selectedVariant.value = null
+      if (!platId) return
+      const plat = (props.plats as any[] || []).find((p: any) => p.id === platId)
+      if (plat?.variants?.length) {
+        try {
+          const res: any = await api.get(`/plats/${platId}/suggest-variant/`)
+          selectedVariant.value = res.variant_id ?? null
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Valeurs snapshot pour pouvoir annuler
+    let snapshotPlat: number | null = null
+    let snapshotVariant: number | null = null
+
+    function openEdit() {
+      snapshotPlat = selected.value
+      snapshotVariant = selectedVariant.value
+      editing.value = true
+    }
+
     function save() {
-      emit('update', selected.value)
+      emit('update', selected.value, selectedVariant.value)
       editing.value = false
+    }
+
+    function cancel() {
+      selected.value = snapshotPlat
+      selectedVariant.value = snapshotVariant
+      editing.value = false
+    }
+
+    function onFocusout(e: FocusEvent) {
+      // Si le focus reste dans le conteneur (ex: passage plat → variant), ne pas sauver
+      if ((e.currentTarget as HTMLElement).contains(e.relatedTarget as Node)) return
+      save()
     }
 
     return () => {
       if (editing.value) {
-        return h('div', { class: 'p-1' }, [
+        const variants: any[] = platSelectionne.value?.variants || []
+        return h('div', {
+          class: 'p-1 space-y-1 outline-none',
+          tabindex: '-1',
+          onFocusout,
+          onKeydown: (e: KeyboardEvent) => { if (e.key === 'Escape') cancel() },
+        }, [
           h('select', {
             value: selected.value,
-            onChange: (e: Event) => { selected.value = Number((e.target as HTMLSelectElement).value) || null },
-            class: 'w-full text-xs border rounded px-1 py-0.5 mb-1',
+            onChange: onPlatChange,
+            class: 'w-full text-xs border rounded px-1 py-0.5',
           }, [
             h('option', { value: '' }, '— Vide —'),
             ...(props.plats as any[]).filter((p: any) => !p.est_secours).map((p: any) =>
               h('option', { value: p.id }, p.nom)
             ),
           ]),
-          h('div', { class: 'flex gap-1' }, [
-            h('button', { onClick: save, class: 'text-xs bg-emerald-500 text-white px-1.5 py-0.5 rounded' }, '✓'),
-            h('button', { onClick: () => { editing.value = false }, class: 'text-xs text-gray-400' }, '✕'),
-          ]),
+          variants.length > 0
+            ? h('select', {
+                value: selectedVariant.value,
+                onChange: (e: Event) => { selectedVariant.value = Number((e.target as HTMLSelectElement).value) || null },
+                class: 'w-full text-xs border border-violet-300 rounded px-1 py-0.5 bg-violet-50',
+              }, [
+                ...variants.map((v: any) => h('option', { value: v.id }, v.nom_court || v.nom)),
+              ])
+            : null,
+          h('p', { class: 'text-[10px] text-gray-400 text-right' }, 'Clic ailleurs pour valider · Échap pour annuler'),
         ])
       }
       return h('div', {
-        onClick: () => { editing.value = true },
+        onClick: openEdit,
         class: 'cursor-pointer min-h-[2.5rem] p-1 rounded hover:bg-emerald-50 transition',
       }, props.creneau?.plat_principal
-        ? h('div', { class: 'text-xs font-medium text-gray-700 leading-tight' }, props.creneau.plat_principal.nom)
+        ? h('div', {}, [
+            h('div', { class: 'text-xs font-medium text-gray-700 leading-tight' }, props.creneau.plat_principal_detail?.nom || ''),  // plat_principal est un PK entier, le nom est dans plat_principal_detail
+            props.creneau.variant_choisi_nom_court
+              ? h('span', { class: 'inline-block mt-0.5 px-1 py-0.5 text-[10px] rounded bg-violet-100 text-violet-700' },
+                  `⇅ ${props.creneau.variant_choisi_nom_court}`)
+              : null,
+          ])
         : h('div', { class: 'text-gray-300 text-xs' }, '+')
       )
     }
@@ -264,6 +334,11 @@ const CellPlanning = defineComponent({
 })
 
 onMounted(async () => {
-  await Promise.all([chargerSemaines(), api.get('/plats/').then(d => plats.value = d), api.get('/membres/').then(d => membres.value = d)])
+  await Promise.all([
+    chargerSemaines(),
+    api.get('/plats/').then(d => plats.value = d),
+    api.get('/membres/').then(d => membres.value = d),
+    api.get('/config/').then(d => config.value = d),
+  ])
 })
 </script>

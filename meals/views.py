@@ -26,7 +26,8 @@ from .models import (
 )
 from .serializers import (
     MembreSerializer, CategorieIngredientSerializer, IngredientSerializer,
-    HistoriqueAchatSerializer, PlatListSerializer, PlatDetailSerializer, PlatWriteSerializer,
+    HistoriqueAchatSerializer,
+    PlatListSerializer, PlatDetailSerializer, PlatWriteSerializer,
     PreferenceSerializer, DemandeModificationSerializer, HistoriquePlatSerializer,
     ConfigSerializer, ConfigWriteSerializer, CreneauPlanningSerializer,
     SemaineMenuSerializer, SemaineMenuListSerializer,
@@ -187,6 +188,16 @@ class PlatViewSet(viewsets.ModelViewSet):
         plat = self.get_object()
         s = HistoriquePlatSerializer(plat.historique.all()[:20], many=True)
         return Response(s.data)
+
+    @action(detail=True, methods=['get'], url_path='suggest-variant', permission_classes=[IsAdminUser])
+    def suggest_variant(self, request, pk=None):
+        from datetime import date
+        from .planning_generator import choisir_variant
+        plat = self.get_object()
+        ingredient = choisir_variant(plat, date.today())
+        if ingredient is None:
+            return Response({'variant_id': None, 'nom_court': None})
+        return Response({'variant_id': ingredient.id, 'nom_court': ingredient.nom_court or ingredient.nom})
 
     @action(detail=False, methods=['post'], url_path='proposer')
     def proposer(self, request):
@@ -378,11 +389,14 @@ class SemaineMenuViewSet(viewsets.ModelViewSet):
         semaine.statut = 'publie'
         semaine.publie_at = timezone.now()
         semaine.save()
-        for creneau in semaine.creneaux.filter(plat_principal__isnull=False):
+        for creneau in semaine.creneaux.filter(plat_principal__isnull=False).select_related('variant_choisi'):
             HistoriquePlat.objects.get_or_create(
                 plat=creneau.plat_principal,
                 date=creneau.date,
-                defaults={'creneau_planning': creneau},
+                defaults={
+                    'creneau_planning': creneau,
+                    'variant_choisi': creneau.variant_choisi,
+                },
             )
         from .tasks import programmer_alertes_semaine
         programmer_alertes_semaine.delay(semaine.id)
@@ -396,25 +410,22 @@ class SemaineMenuViewSet(viewsets.ModelViewSet):
         semaine.save()
         return Response(SemaineMenuSerializer(semaine).data)
 
-    @action(detail=False, methods=['post'])
-    def generer(self, request):
+    @action(detail=True, methods=['post'])
+    def generer(self, request, pk=None):
         from .planning_generator import generer_planning_auto
-        semaine_id = request.data.get('semaine_id')
-        if not semaine_id:
-            return Response({'detail': 'semaine_id requis.'}, status=400)
-        semaine = SemaineMenu.objects.get(pk=semaine_id)
+        semaine = self.get_object()
         generer_planning_auto(semaine)
         return Response(SemaineMenuSerializer(semaine).data)
 
-    @action(detail=False, methods=['post'])
-    def candidats(self, request):
+    @action(detail=True, methods=['post'])
+    def candidats(self, request, pk=None):
         from .planning_generator import get_top3_candidats
-        semaine_id = request.data.get('semaine_id')
+        semaine = self.get_object()
         date_str = request.data.get('date')
         creneau = request.data.get('creneau')
-        if not all([semaine_id, date_str, creneau]):
-            return Response({'detail': 'semaine_id, date et creneau sont requis.'}, status=400)
-        plats = get_top3_candidats(semaine_id, date_str, creneau)
+        if not all([date_str, creneau]):
+            return Response({'detail': 'date et creneau sont requis.'}, status=400)
+        plats = get_top3_candidats(semaine.id, date_str, creneau)
         return Response(PlatListSerializer(plats, many=True).data)
 
 
@@ -424,7 +435,7 @@ class SemaineMenuViewSet(viewsets.ModelViewSet):
 
 class CreneauPlanningViewSet(viewsets.ModelViewSet):
     queryset = CreneauPlanning.objects.select_related(
-        'plat_principal', 'plat_secours',
+        'plat_principal', 'plat_secours', 'variant_choisi',
     ).prefetch_related('membres_secours').all()
     serializer_class = CreneauPlanningSerializer
     permission_classes = [IsAdminUser]

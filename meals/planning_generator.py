@@ -6,7 +6,7 @@ from collections import defaultdict
 import random
 
 from .models import (
-    Plat, DisponibilitePlat, Preference, HistoriquePlat,
+    Plat, PlatIngredient, Ingredient, DisponibilitePlat, Preference, HistoriquePlat,
     SemaineMenu, CreneauPlanning, Config, Membre, JOUR_CHOICES,
 )
 
@@ -136,6 +136,41 @@ def trouver_plat_secours(membres_detestent: list, plats_deja_places_ids: set):
     return secours_candidats.first()
 
 
+def choisir_variant(plat: Plat, date_ref: date):
+    """
+    Parmi les ingrédients variants du plat (est_variant=True),
+    retourne celui qui a été utilisé le moins récemment (ou jamais).
+    Retourne None si le plat n'a pas de variants.
+    """
+    variants_pis = list(
+        PlatIngredient.objects.filter(plat=plat, est_variant=True)
+        .select_related('ingredient')
+    )
+    if not variants_pis:
+        return None
+
+    # Pour chaque variant, chercher la date de dernière utilisation
+    meilleur_ingredient = None
+    meilleure_date = None  # None = jamais utilisé → priorité absolue
+
+    for pi in variants_pis:
+        dernier = (
+            HistoriquePlat.objects
+            .filter(plat=plat, variant_choisi=pi.ingredient)
+            .order_by('-date')
+            .values_list('date', flat=True)
+            .first()
+        )
+        if dernier is None:
+            # Jamais utilisé : priorité absolue
+            return pi.ingredient
+        if meilleure_date is None or dernier < meilleure_date:
+            meilleure_date = dernier
+            meilleur_ingredient = pi.ingredient
+
+    return meilleur_ingredient
+
+
 def generer_planning_auto(semaine: SemaineMenu):
     """
     Génère automatiquement le planning pour une semaine.
@@ -186,6 +221,7 @@ def generer_planning_auto(semaine: SemaineMenu):
                     plats_secours_deja_places_ids.add(plat_secours.id)
 
         # Enregistrer le créneau
+        variant = choisir_variant(plat_choisi, slot['date']) if plat_choisi else None
         creneau_obj, _ = CreneauPlanning.objects.update_or_create(
             semaine=semaine,
             date=slot['date'],
@@ -193,6 +229,7 @@ def generer_planning_auto(semaine: SemaineMenu):
             defaults={
                 'plat_principal': plat_choisi,
                 'plat_secours': plat_secours,
+                'variant_choisi': variant,
             },
         )
         if membres_secours_ids:

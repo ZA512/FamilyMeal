@@ -22,7 +22,7 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
-            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Catégorie</th>
+            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden sm:table-cell">Nom court</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Unité</th>
             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Prix</th>
             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase hidden md:table-cell">Options</th>
@@ -32,8 +32,9 @@
         <tbody class="divide-y divide-gray-100">
           <tr v-for="ing in ingredientsFiltres" :key="ing.id" class="hover:bg-gray-50">
             <td class="px-4 py-3 font-medium text-sm text-gray-800">{{ ing.nom }}</td>
-            <td class="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">
-              {{ categorieNom(ing.categorie) }}
+            <td class="px-4 py-3 text-sm hidden sm:table-cell">
+              <span v-if="ing.nom_court" class="px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-xs font-medium">{{ ing.nom_court }}</span>
+              <span v-else class="text-gray-300">—</span>
             </td>
             <td class="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">{{ ing.unite || '—' }}</td>
             <td class="px-4 py-3 text-sm text-right hidden md:table-cell">
@@ -69,6 +70,11 @@
           <div>
             <label class="label">Nom *</label>
             <input v-model="form.nom" type="text" required class="input" />
+          </div>
+          <div>
+            <label class="label">Nom court (planning)</label>
+            <input v-model="form.nom_court" type="text" placeholder="ex : Penne" class="input" />
+            <p class="text-xs text-gray-400 mt-1">Affiché dans le planning quand cet ingrédient est choisi comme variant d'un plat.</p>
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div>
@@ -126,7 +132,7 @@ const modal = ref(false)
 const editId = ref<number | null>(null)
 const error = ref('')
 
-const emptyForm = () => ({ nom: '', categorie: '' as any, unite: '', url_produit: '', prix: null as number | null, achat_systematique: false })
+const emptyForm = () => ({ nom: '', nom_court: '', categorie: '' as any, unite: '', url_produit: '', prix: null as number | null, achat_systematique: false })
 const form = reactive(emptyForm())
 
 const ingredientsFiltres = computed(() => ingredients.value.filter(i => {
@@ -148,7 +154,7 @@ function ouvrirNouveau() {
 
 function ouvrirEdition(ing: any) {
   editId.value = ing.id
-  Object.assign(form, { nom: ing.nom, categorie: ing.categorie || '', unite: ing.unite || '', url_produit: ing.url_produit || '', prix: ing.prix !== null ? Number(ing.prix) : null, achat_systematique: ing.achat_systematique })
+  Object.assign(form, { nom: ing.nom, nom_court: ing.nom_court || '', categorie: ing.categorie || '', unite: ing.unite || '', url_produit: ing.url_produit || '', prix: ing.prix !== null ? Number(ing.prix) : null, achat_systematique: ing.achat_systematique })
   error.value = ''
   modal.value = true
 }
@@ -157,7 +163,7 @@ async function sauvegarder() {
   saving.value = true
   error.value = ''
   try {
-    const payload = { nom: form.nom, categorie: form.categorie || null, unite: form.unite, url_produit: form.url_produit || null, prix: form.prix ?? null, achat_systematique: form.achat_systematique }
+    const payload = { nom: form.nom, nom_court: form.nom_court || '', categorie: form.categorie || null, unite: form.unite, url_produit: form.url_produit || null, prix: form.prix ?? null, achat_systematique: form.achat_systematique }
     if (editId.value) {
       await api.put(`/ingredients/${editId.value}/`, payload)
     } else {

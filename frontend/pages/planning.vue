@@ -53,7 +53,7 @@
               <div v-if="getCreneauPlanning(jour.date, creneau) as cp">
                 <!-- Plat principal -->
                 <div class="text-sm font-semibold text-gray-800 leading-tight">
-                  {{ cp.plat_principal?.nom || '—' }}
+                  {{ cp.plat_principal?.nom || '—' }}<span v-if="cp.variant_choisi_nom_court" class="ml-1 font-normal text-violet-600"> · {{ cp.variant_choisi_nom_court }}</span>
                 </div>
                 <!-- Photo miniature -->
                 <img

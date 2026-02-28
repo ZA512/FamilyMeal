@@ -64,6 +64,10 @@ class Ingredient(models.Model):
     lie_a_plat = models.BooleanField(
         default=True, help_text='False = produit de fond (sel, beurre...) sans recette associée',
     )
+    nom_court = models.CharField(
+        max_length=100, blank=True,
+        help_text='Nom affiché dans le planning (ex: Penne). Si vide, le nom complet est utilisé.',
+    )
 
     def __str__(self):
         return self.nom
@@ -151,6 +155,10 @@ class PlatIngredient(models.Model):
     quantite_par_portion = models.FloatField(null=True, blank=True)
     unite = models.CharField(max_length=20, blank=True, help_text='Remplace l\'unité par défaut de l\'ingrédient')
     notes = models.CharField(max_length=200, blank=True, help_text='Ex: 1 ou 2 packs selon appétit')
+    est_variant = models.BooleanField(
+        default=False,
+        help_text='Ingrédient interchangeable (ex: Penne/Farfalle). Le planning en choisit un par rotation.',
+    )
 
     def __str__(self):
         return f'{self.plat.nom} — {self.ingredient.nom}'
@@ -207,6 +215,11 @@ class HistoriquePlat(models.Model):
     notes = models.CharField(max_length=500, blank=True)
     creneau_planning = models.ForeignKey(
         'CreneauPlanning', on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    variant_choisi = models.ForeignKey(
+        Ingredient, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='historique_comme_variant',
+        help_text='Variant de cet ingrédient qui a été servi (ex: Penne)',
     )
 
     class Meta:
@@ -286,6 +299,11 @@ class CreneauPlanning(models.Model):
     )
     membres_secours = models.ManyToManyField(
         Membre, blank=True, help_text='Membres qui mangent le plat de secours',
+    )
+    variant_choisi = models.ForeignKey(
+        Ingredient, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='creneaux_variant',
+        help_text='Variant retenu pour ce créneau (ex: Penne dans une Bolognaise)',
     )
     notes = models.CharField(max_length=500, blank=True)
 
